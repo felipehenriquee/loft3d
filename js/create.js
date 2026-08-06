@@ -1,16 +1,15 @@
 
 import * as THREE from 'three';
-// import Stats from './../three/examples/jsm/libs/stats.module.js';
-import { OrbitControls } from './../jsm/controls/OrbitControls.js';
-import { RoomEnvironment } from './../jsm/environments/RoomEnvironment.js';
-import { GLTFLoader } from './../jsm/loaders/GLTFLoader.js';
-import { DRACOLoader } from './../jsm/loaders/DRACOLoader.js';
-import { CSS2DRenderer } from './../jsm/renderers/CSS2DRenderer.js';
-import { CSS2DObject } from './../jsm/renderers/CSS2DRenderer.js';
-import { CSS3DRenderer } from './../jsm/renderers/CSS3DRenderer.js';
-import { CSS3DObject } from './../jsm/renderers/CSS3DRenderer.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
+import { CSS3DRenderer, CSS3DObject } from 'three/examples/jsm/renderers/CSS3DRenderer.js';
 import { Objetos } from './objects.js';
 import { qrcode } from './../src/qrcode/qrcode.js';
+import '@google/model-viewer';
 
 let ids = []
 let idsCima = []
@@ -35,7 +34,6 @@ camera.position.set(0, 0, 5);
 
 // Renderizador
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.xr.enabled = true;
 let labelRenderer = new CSS2DRenderer();
 let botoesRenderer = new CSS3DRenderer();
 
@@ -299,17 +297,6 @@ if (modoVisualizacao) {
 	// sem isso o botão fica fora da tela em telas estreitas (celular)
 	btnRa.style.right = '20px';
 }
-
-// Retículo usado para indicar onde o conjunto será posicionado em RA
-const reticle = new THREE.Mesh(
-	new THREE.RingGeometry(0.08, 0.1, 32).rotateX(-Math.PI / 2),
-	new THREE.MeshBasicMaterial({ color: 0xE56399 })
-);
-reticle.matrixAutoUpdate = true;
-reticle.visible = false;
-scene.add(reticle);
-
-const corDeFundoOriginal = scene.background;
 
 // Instantiate a loader
 // Optional: Provide a DRACOLoader instance to decode compressed mesh data
@@ -1643,77 +1630,49 @@ const handleCameraOnAdd = (valorXCube) => {
 }
 
 
-// WebXR - Realidade Aumentada
-let arSession = null;
-let hitTestSource = null;
-let hitTestSourceRequested = false;
+// Realidade Aumentada via <model-viewer>: Scene Viewer no Android, AR Quick Look no iOS,
+// e WebXR como bônus quando disponível — bem mais compatível que WebXR puro.
+const dispositivoMovel = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-function onSelect() {
-	if (reticle.visible) {
-		const posicaoMundo = new THREE.Vector3();
-		reticle.getWorldPosition(posicaoMundo);
-		scene.position.copy(posicaoMundo);
-	}
+const modelViewerAR = document.createElement('model-viewer');
+modelViewerAR.setAttribute('ar', '');
+modelViewerAR.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
+modelViewerAR.style.position = 'fixed';
+modelViewerAR.style.width = '1px';
+modelViewerAR.style.height = '1px';
+modelViewerAR.style.opacity = '0';
+modelViewerAR.style.pointerEvents = 'none';
+document.body.appendChild(modelViewerAR);
+
+async function exportarMontagemParaGLB() {
+	const exporter = new GLTFExporter();
+	const glb = await exporter.parseAsync(scene, { binary: true });
+	return URL.createObjectURL(new Blob([glb], { type: 'model/gltf-binary' }));
 }
 
-async function onSessionStarted(session) {
-	arSession = session;
-	hitTestSourceRequested = false;
-	hitTestSource = null;
+btnRa.title = 'Ver em Realidade Aumentada';
 
-	session.addEventListener('end', onSessionEnded);
-	session.addEventListener('select', onSelect);
-
-	renderer.xr.setReferenceSpaceType('local');
-	await renderer.xr.setSession(session);
-
-	scene.background = null;
-	reticle.visible = false;
-	btnRa.classList.add('btnAtivo');
-}
-
-function onSessionEnded() {
-	arSession.removeEventListener('end', onSessionEnded);
-	arSession.removeEventListener('select', onSelect);
-	arSession = null;
-	hitTestSourceRequested = false;
-	hitTestSource = null;
-
-	scene.background = corDeFundoOriginal;
-	scene.position.set(0, 0, 0);
-	reticle.visible = false;
-	btnRa.classList.remove('btnAtivo');
-}
-
-let raSuportada = false;
-
-btnRa.addEventListener('pointerdown', function () {
-	if (arSession !== null) {
-		arSession.end();
-		return;
-	}
-
-	if (!raSuportada) {
+btnRa.addEventListener('pointerdown', async function () {
+	if (!dispositivoMovel) {
 		abrirModalQRCode();
 		return;
 	}
 
-	navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test'] })
-		.then(onSessionStarted)
-		.catch(function (erro) {
-			console.warn('Não foi possível iniciar a sessão de RA', erro);
-			abrirModalQRCode();
-		});
+	btnRa.disabled = true;
+	try {
+		const url = await exportarMontagemParaGLB();
+		modelViewerAR.addEventListener('load', function aoCarregar() {
+			modelViewerAR.removeEventListener('load', aoCarregar);
+			modelViewerAR.activateAR();
+		}, { once: true });
+		modelViewerAR.src = url;
+	} catch (erro) {
+		console.warn('Não foi possível exportar a montagem para RA', erro);
+		abrirModalQRCode();
+	} finally {
+		btnRa.disabled = false;
+	}
 });
-
-if ('xr' in navigator) {
-	navigator.xr.isSessionSupported('immersive-ar').then(function (suportado) {
-		raSuportada = suportado;
-		btnRa.title = suportado ? 'Ver em Realidade Aumentada' : 'Ver no celular via QR Code';
-	});
-} else {
-	btnRa.title = 'Ver no celular via QR Code';
-}
 
 // Se a página foi aberta via QR Code, remonta automaticamente a montagem antes de liberar o botão de RA
 if (receitaURL) {
@@ -1723,47 +1682,10 @@ if (receitaURL) {
 	});
 }
 
-function animate(timestamp, frame) {
-
-	if (frame) {
-
-		const referenceSpace = renderer.xr.getReferenceSpace();
-		const session = renderer.xr.getSession();
-
-		if (!hitTestSourceRequested) {
-			session.requestReferenceSpace('viewer').then(function (viewerSpace) {
-				session.requestHitTestSource({ space: viewerSpace }).then(function (source) {
-					hitTestSource = source;
-				});
-			});
-			hitTestSourceRequested = true;
-		}
-
-		if (hitTestSource) {
-			const hitTestResults = frame.getHitTestResults(hitTestSource);
-
-			if (hitTestResults.length > 0) {
-				const hit = hitTestResults[0];
-				const pose = hit.getPose(referenceSpace);
-				const posicaoMundo = new THREE.Vector3().setFromMatrixPosition(
-					new THREE.Matrix4().fromArray(pose.transform.matrix)
-				);
-
-				reticle.visible = true;
-				reticle.position.copy(posicaoMundo).sub(scene.position);
-			} else {
-				reticle.visible = false;
-			}
-		}
-	} else {
-		controls.update();
-	}
-
-	if (!renderer.xr.isPresenting) {
-		labelRenderer.render(scene, camera);
-		botoesRenderer.render(scene, camera);
-	}
-
+function animate() {
+	controls.update();
+	labelRenderer.render(scene, camera);
+	botoesRenderer.render(scene, camera);
 	renderer.render(scene, camera);
 }
 
