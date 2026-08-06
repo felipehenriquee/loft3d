@@ -50,6 +50,13 @@ document.body.appendChild(renderer.domElement);
 document.body.appendChild(labelRenderer.domElement);
 document.body.appendChild(botoesRenderer.domElement);
 
+// Selo de versão, pra conferir se o site publicado já tem a última mudança
+const versaoDiv = document.createElement('div');
+versaoDiv.className = 'versaoApp';
+versaoDiv.textContent = 'v' + __APP_VERSION__;
+versaoDiv.title = 'Build: ' + __BUILD_TIME__;
+document.body.appendChild(versaoDiv);
+
 // camera rotacao
 const controls = new OrbitControls(camera, botoesRenderer.domElement);
 
