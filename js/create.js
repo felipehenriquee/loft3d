@@ -1173,7 +1173,7 @@ window.addEventListener('resize', function () {
 
 window.addEventListener('click', function () {
 	if (modoVisualizacao) return;
-	pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+	pointer.x = (event.clientX / tamanhoScene) * 2 - 1;
 	pointer.y = - (event.clientY / window.innerHeight) * 2 + 1;
 	raycaster.setFromCamera(pointer, camera);
 	var intersects = raycaster.intersectObjects(scene.children);
@@ -1311,7 +1311,7 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 				const aoConcluir = function (id) { passoGravado.id = id; montagemGravada.push(passoGravado); atualizarModeloAR() }
 				tipo == "chao" ? criaObjetoChao(modeloEscolhido, xEscolhido, yEscolhido, aoConcluir) : criaObjetoCima(modeloEscolhido, xEscolhido, yEscolhido, indexEscolhido, aoConcluir)
 			}
-			for (let j = 0; j < tipo == "chao" ? botoes3d.length : botoes3dCima.length; j++) {
+			for (let j = 0; j < (tipo == "chao" ? botoes3d.length : botoes3dCima.length); j++) {
 				const botaoDireita = scene.getObjectById(tipo == "chao" ? botoes3d[j].direita : botoes3dCima[j].direita);
 				const botaoEsquerda = scene.getObjectById(tipo == "chao" ? botoes3d[j].esquerda : botoes3dCima[j].esquerda);
 				const botaoCima = scene.getObjectById(botoes3d[j].cima);
@@ -1401,7 +1401,7 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 				const aoConcluir = function (id) { passoGravado.id = id; montagemGravada.push(passoGravado); atualizarModeloAR() }
 				tipo == "chao" ? criaObjetoChao(modeloEscolhido, xEscolhido, yEscolhido, aoConcluir) : criaObjetoCima(modeloEscolhido, xEscolhido, yEscolhido, indexEscolhido, aoConcluir)
 			}
-			for (let j = 0; j < tipo == "chao" ? botoes3d.length : botoes3dCima.length; j++) {
+			for (let j = 0; j < (tipo == "chao" ? botoes3d.length : botoes3dCima.length); j++) {
 				const botaoDireita = scene.getObjectById(tipo == "chao" ? botoes3d[j].direita : botoes3dCima[j].direita);
 				const botaoEsquerda = scene.getObjectById(tipo == "chao" ? botoes3d[j].esquerda : botoes3dCima[j].esquerda);
 				const botaoCima = scene.getObjectById(botoes3d[j].cima);
@@ -1475,7 +1475,7 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 					atualizarModeloAR()
 				})
 			}
-			for (let j = 0; j < tipo == "chao" ? botoes3d.length : botoes3dCima.length; j++) {
+			for (let j = 0; j < (tipo == "chao" ? botoes3d.length : botoes3dCima.length); j++) {
 				const botaoDireita = scene.getObjectById(tipo == "chao" ? botoes3d[j].direita : botoes3dCima[j].direita);
 				const botaoEsquerda = scene.getObjectById(tipo == "chao" ? botoes3d[j].esquerda : botoes3dCima[j].esquerda);
 				const botaoCima = scene.getObjectById(botoes3d[j].cima);
