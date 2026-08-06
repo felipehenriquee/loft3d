@@ -17,7 +17,11 @@ let idsCima = []
 let botoes3d = []
 let botoes3dCima = []
 
-const tamanhoMenuLateral = 400;
+// Aberto via QR Code: mostra só o móvel montado + botão de RA, sem edição
+const receitaURL = new URLSearchParams(window.location.search).get('m');
+const modoVisualizacao = !!receitaURL;
+
+const tamanhoMenuLateral = modoVisualizacao ? 0 : 400;
 let tamanhoScene = window.innerWidth - tamanhoMenuLateral;
 // import { Projector } from './three/examples/jsm/loaders/DRACOLoader.js';
 
@@ -276,6 +280,15 @@ scene.add(btnAdd);
 scene.add(botaoVoltar);
 scene.add(botaoRa);
 scene.add(divInfoTamanho)
+
+// Modo visualização (aberto via QR Code): some com toda a edição, deixa só o objeto montado e o botão de RA
+if (modoVisualizacao) {
+	menuDiv.classList.add('hide');
+	btnCompartilhar.classList.add('hide');
+	btnVoltar.classList.add('hide');
+	addButton.classList.add('hide');
+	info.classList.add('hide');
+}
 
 // Retículo usado para indicar onde o conjunto será posicionado em RA
 const reticle = new THREE.Mesh(
@@ -1160,6 +1173,7 @@ window.addEventListener('resize', function () {
 })
 
 window.addEventListener('click', function () {
+	if (modoVisualizacao) return;
 	pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
 	pointer.y = - (event.clientY / window.innerHeight) * 2 + 1;
 	raycaster.setFromCamera(pointer, camera);
@@ -1692,10 +1706,9 @@ if ('xr' in navigator) {
 }
 
 // Se a página foi aberta via QR Code, remonta automaticamente a montagem antes de liberar o botão de RA
-const receitaDaURL = new URLSearchParams(window.location.search).get('m');
-if (receitaDaURL) {
+if (receitaURL) {
 	btnRa.disabled = true;
-	remontarDaURL(desserializarMontagem(receitaDaURL)).finally(function () {
+	remontarDaURL(desserializarMontagem(receitaURL)).finally(function () {
 		btnRa.disabled = false;
 	});
 }
