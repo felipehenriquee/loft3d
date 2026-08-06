@@ -252,16 +252,6 @@ btnAdd.position.setZ(0.6)
 btnAdd.position.setX(-1.5)
 
 
-const addButtonBaixo = document.createElement('button');
-addButtonBaixo.className = 'btnAdd backgroundImage hide';
-addButtonBaixo.addEventListener('pointerdown', function (event) {
-	xEscolhido = 0;
-	yEscolhido = -1;
-	adicionaCubo = true;
-	ladoEscolhido = "baixo";
-	indexEscolhido = indexEscolhidoTemporario
-});
-
 const info = document.createElement('div')
 info.classList.add('infoTamanho')
 const largura = document.createElement('p')
@@ -476,6 +466,7 @@ function criaObjeto(modelo, x, y, onDone) {
 
 			createButtonAdd(-1, 0, scene.getObjectById(ids[0]), 0, "chao")
 			createButtonAdd(0, 1, scene.getObjectById(ids[0]), 0, "chao")
+			createButtonAdd(0, -1, scene.getObjectById(ids[0]), 0, "chao")
 
 			createButtonAdd(1, 0, scene.getObjectById(idsCima[0]), 0, "cima")
 
@@ -578,6 +569,7 @@ function criaObjetoChao(modelo, px, py, onDone) {
 				createButtonAdd(1, 0, gltf.scene, indexEscolhido + 1, "chao")
 				createButtonAdd(-1, 0, gltf.scene, indexEscolhido + 1, "chao")
 				createButtonAdd(0, 1, gltf.scene, indexEscolhido + 1, "chao")
+				createButtonAdd(0, -1, gltf.scene, indexEscolhido + 1, "chao")
 
 				createButtonAdd(1, 0, scene.getObjectById(idsCima[indexEscolhido + 1]), indexEscolhido + 1, "cima")
 				createButtonAdd(-1, 0, scene.getObjectById(idsCima[indexEscolhido + 1]), indexEscolhido + 1, "cima")
@@ -634,6 +626,7 @@ function criaObjetoChao(modelo, px, py, onDone) {
 				createButtonAdd(1, 0, gltf.scene, indexEscolhido - 1 <= 0 ? 0 : indexEscolhido - 1, "chao")
 				createButtonAdd(-1, 0, gltf.scene, indexEscolhido - 1 <= 0 ? 0 : indexEscolhido - 1, "chao")
 				createButtonAdd(0, 1, gltf.scene, indexEscolhido - 1 <= 0 ? 0 : indexEscolhido - 1, "chao")
+				createButtonAdd(0, -1, gltf.scene, indexEscolhido - 1 <= 0 ? 0 : indexEscolhido - 1, "chao")
 
 				createButtonAdd(1, 0, scene.getObjectById(idsCima[indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0]), indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0, "cima")
 				createButtonAdd(-1, 0, scene.getObjectById(idsCima[indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0]), indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0, "cima")
@@ -761,6 +754,7 @@ function criaObjetoCima(modelo, px, py, index, onDone) {
 				createButtonAdd(1, 0, scene.getObjectById(ids[indexEscolhido + 1]), indexEscolhido + 1, "chao")
 				createButtonAdd(-1, 0, scene.getObjectById(ids[indexEscolhido + 1]), indexEscolhido + 1, "chao")
 				createButtonAdd(0, 1, scene.getObjectById(ids[indexEscolhido + 1]), indexEscolhido + 1, "chao")
+				createButtonAdd(0, -1, scene.getObjectById(ids[indexEscolhido + 1]), indexEscolhido + 1, "chao")
 
 				botoes3dCima[indexEscolhido + 1] ? botoes3dCima[indexEscolhido + 1] = botoes3dCima[indexEscolhido + 1] : botoes3dCima.push(botaoCima)
 				createButtonAdd(1, 0, scene.getObjectById(idsCima[indexEscolhido + 1]), indexEscolhido + 1, "cima")
@@ -812,6 +806,7 @@ function criaObjetoCima(modelo, px, py, index, onDone) {
 				createButtonAdd(1, 0, scene.getObjectById(ids[indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0]), indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0, "chao")
 				createButtonAdd(-1, 0, scene.getObjectById(ids[indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0]), indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0, "chao")
 				createButtonAdd(0, 1, scene.getObjectById(ids[indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0]), indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0, "chao")
+				createButtonAdd(0, -1, scene.getObjectById(ids[indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0]), indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0, "chao")
 
 				botoes3dCima[indexEscolhido - 1] ? botoes3dCima[indexEscolhido - 1] = botoes3dCima[indexEscolhido - 1] : botoes3dCima.unshift(botaoCima)
 				createButtonAdd(1, 0, scene.getObjectById(idsCima[indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0]), indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0, "cima")
@@ -1064,6 +1059,8 @@ function criaCubo(embaixo = false, nome = "cubo") {
 	let cubeCima;
 	if (ladoEscolhido == "esquerda") cubeCima = idsCima.length == 1 ? scene.getObjectById(idsCima[0]) : scene.getObjectById(idsCima[indexEscolhido]);
 	else cubeCima = idsCima.length == 1 ? scene.getObjectById(idsCima[0]) : scene.getObjectById(idsCima[indexEscolhido + 1]);
+	// Sem vizinho à direita (ex: removendo o item da ponta), usa o próprio item como referência
+	if (!cubeCima) cubeCima = cubeEscolhido;
 
 	const geometry = new THREE.BoxGeometry(embaixo ? cubeCima.box3.min.x - cubeCima.box3.max.x : cubeEscolhido.box3.min.x - cubeEscolhido.box3.max.x, 0.86, 1);
 	const cube = new THREE.Mesh(geometry, material)
@@ -1117,6 +1114,8 @@ function criaCuboCima(emcima = false, nome = "cubo") {
 	let cubeEscolhido = ids.length == 1 ? scene.getObjectById(ids[0]) : scene.getObjectById(ids[indexEscolhido])
 
 	let cubeBaixo = ids.length == 1 ? scene.getObjectById(ids[0]) : scene.getObjectById(ids[indexEscolhido + 1]);
+	// Sem vizinho à direita (ex: removendo o item da ponta), usa o próprio item como referência
+	if (!cubeBaixo) cubeBaixo = cubeEscolhido;
 
 	const geometry = new THREE.BoxGeometry(emcima ? cubeBaixo.box3.min.x - cubeBaixo.box3.max.x : cubeEscolhido.box3.min.x - cubeEscolhido.box3.max.x, 0.86, 1);
 	const cube = new THREE.Mesh(geometry, material)
@@ -1315,10 +1314,12 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 				const botaoDireita = scene.getObjectById(tipo == "chao" ? botoes3d[j].direita : botoes3dCima[j].direita);
 				const botaoEsquerda = scene.getObjectById(tipo == "chao" ? botoes3d[j].esquerda : botoes3dCima[j].esquerda);
 				const botaoCima = scene.getObjectById(botoes3d[j].cima);
+				const botaoBaixo = scene.getObjectById(botoes3d[j].baixo);
 
 				botaoDireita.visible = false
 				botaoEsquerda.visible = false
 				botaoCima.visible = false
+				if (botaoBaixo) botaoBaixo.visible = false
 
 			}
 
@@ -1405,10 +1406,12 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 				const botaoDireita = scene.getObjectById(tipo == "chao" ? botoes3d[j].direita : botoes3dCima[j].direita);
 				const botaoEsquerda = scene.getObjectById(tipo == "chao" ? botoes3d[j].esquerda : botoes3dCima[j].esquerda);
 				const botaoCima = scene.getObjectById(botoes3d[j].cima);
+				const botaoBaixo = scene.getObjectById(botoes3d[j].baixo);
 
 				botaoDireita.visible = false
 				botaoEsquerda.visible = false
 				botaoCima.visible = false
+				if (botaoBaixo) botaoBaixo.visible = false
 
 			}
 
@@ -1479,10 +1482,12 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 				const botaoDireita = scene.getObjectById(tipo == "chao" ? botoes3d[j].direita : botoes3dCima[j].direita);
 				const botaoEsquerda = scene.getObjectById(tipo == "chao" ? botoes3d[j].esquerda : botoes3dCima[j].esquerda);
 				const botaoCima = scene.getObjectById(botoes3d[j].cima);
+				const botaoBaixo = scene.getObjectById(botoes3d[j].baixo);
 
 				botaoDireita.visible = false
 				botaoEsquerda.visible = false
 				botaoCima.visible = false
+				if (botaoBaixo) botaoBaixo.visible = false
 
 			}
 
@@ -1507,13 +1512,74 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 		scene.add(btnAddCima);
 	}
 	else if (y == -1) {
-		const btnAddBaixo = new CSS3DObject(addButtonBaixo);
-		btnAddBaixo.scale.set(0.01, 0.01, 1)
-		btnAddBaixo.position.setZ(0.6)
-		btnAddBaixo.position.setX(-1.5)
-		btnAddBaixo.name = "botao"
-		scene.add(btnAddBaixo);
+		const addButtonBaixoPos = document.createElement('button');
+		addButtonBaixoPos.className = 'btnAdd backgroundImage';
 
+		const btnAddBaixoPos = new CSS3DObject(addButtonBaixoPos);
+
+		addButtonBaixoPos.addEventListener('pointerdown', function (event) {
+
+			xEscolhido = 0;
+			yEscolhido = -1;
+			adicionaCubo = true;
+			ladoEscolhido = "baixo";
+
+			pointer.x = (event.clientX / tamanhoScene) * 2 - 1;
+			pointer.y = - (event.clientY / window.innerHeight) * 2 + 1;
+			raycaster.setFromCamera(pointer, camera);
+			var intersects = raycaster.intersectObjects(scene.children);
+
+			if (intersects.length > 0) {
+				menuDiv.classList.add("label");
+				const position = intersects[0].object.position;
+				uuidEscolhido = intersects[0].object.name == "cubo" ? intersects[0].object.id : intersects[0].object.parent.id;
+
+				let cubeEscolhido = scene.getObjectById(uuidEscolhido);
+
+
+				if (!cubeEscolhido.userData.tamanho) {
+
+					uuidEscolhido = intersects[0].object.parent.parent.id;
+					cubeEscolhido = scene.getObjectById(uuidEscolhido);
+				}
+
+				indexEscolhido = cubeEscolhido.userData.modelo.tipo == "chao" ? ids.indexOf(uuidEscolhido) : idsCima.indexOf(uuidEscolhido);
+
+			}
+
+			{
+				const passoGravado = { fn: 'c', k: modeloEscolhido.chave, px: xEscolhido, py: yEscolhido, idx: indexEscolhido }
+				criaObjetoChao(modeloEscolhido, xEscolhido, yEscolhido, function (id) {
+					passoGravado.id = id
+					montagemGravada.push(passoGravado)
+					atualizarModeloAR()
+				})
+			}
+			for (let j = 0; j < botoes3d.length; j++) {
+				const botaoDireita = scene.getObjectById(botoes3d[j].direita);
+				const botaoEsquerda = scene.getObjectById(botoes3d[j].esquerda);
+				const botaoCima = scene.getObjectById(botoes3d[j].cima);
+				const botaoBaixo = scene.getObjectById(botoes3d[j].baixo);
+
+				botaoDireita.visible = false
+				botaoEsquerda.visible = false
+				botaoCima.visible = false
+				if (botaoBaixo) botaoBaixo.visible = false
+
+			}
+
+		});
+		btnAddBaixoPos.scale.set(0.01, 0.01, 1)
+		btnAddBaixoPos.position.setZ(0.6)
+
+		btnAddBaixoPos.name = "botao"
+		btnAddBaixoPos.visible = false;
+
+		btnAddBaixoPos.position.setX(cubinho.position.x)
+		btnAddBaixoPos.position.setY(cubinho.position.y)
+
+		botoes3d[i].baixo = btnAddBaixoPos.id;
+		scene.add(btnAddBaixoPos);
 	}
 
 }
@@ -1565,7 +1631,18 @@ function verificaPosBotoes() {
 			botaoEsquerda.visible = false
 
 			let cubeCima = scene.getObjectById(idsCima[i]);
-			if (cubeCima.name == "cubo") botaoCima.visible = true
+			// só deixa colocar o armário em cima se o balcão embaixo for do mesmo tamanho
+			if (cubeCima.name == "cubo" && cubeEscolhido.userData.modelo.tamanhox == movelEscolhido.tamanhox) botaoCima.visible = true
+		}
+
+		let botaoBaixo = scene.getObjectById(botoes3d[i].baixo);
+		if (botaoBaixo) botaoBaixo.visible = false;
+		if (movelEscolhido.tipo == "chao" && botaoBaixo) {
+			let cubeCimaReal = scene.getObjectById(idsCima[i]);
+			// só deixa colocar o balcão embaixo se já existir um armário ali e for do mesmo tamanho
+			if (cubeEscolhido.name == "cubo" && cubeCimaReal.name != "cubo" && cubeCimaReal.userData.modelo.tamanhox == movelEscolhido.tamanhox) {
+				botaoBaixo.visible = true
+			}
 		}
 
 		if (i + 1 < ids.length) {
