@@ -169,6 +169,7 @@ for (let i = 0; i < objetos.todosObjetos.length; i++) {
 			const chaveModelo = objetos.todosObjetos[i].chave
 			criaObjeto(objetos.todosObjetos[i], undefined, undefined, function (id) {
 				montagemGravada.push({ fn: 'i', k: chaveModelo, id: id })
+				atualizarModeloAR()
 			})
 		}
 		// menuDiv.classList.add("hide");
@@ -932,6 +933,7 @@ function remove() {
 	indexAntigo = null
 	if (ids.length == 0 && idsCima.length == 0) addButton.classList.remove('hide')
 
+	atualizarModeloAR()
 }
 
 function realocaModelo() {
@@ -1306,7 +1308,7 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 			}
 			{
 				const passoGravado = { fn: tipo == "chao" ? 'c' : 't', k: modeloEscolhido.chave, px: xEscolhido, py: yEscolhido, idx: indexEscolhido }
-				const aoConcluir = function (id) { passoGravado.id = id; montagemGravada.push(passoGravado) }
+				const aoConcluir = function (id) { passoGravado.id = id; montagemGravada.push(passoGravado); atualizarModeloAR() }
 				tipo == "chao" ? criaObjetoChao(modeloEscolhido, xEscolhido, yEscolhido, aoConcluir) : criaObjetoCima(modeloEscolhido, xEscolhido, yEscolhido, indexEscolhido, aoConcluir)
 			}
 			for (let j = 0; j < tipo == "chao" ? botoes3d.length : botoes3dCima.length; j++) {
@@ -1396,7 +1398,7 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 			}
 			{
 				const passoGravado = { fn: tipo == "chao" ? 'c' : 't', k: modeloEscolhido.chave, px: xEscolhido, py: yEscolhido, idx: indexEscolhido }
-				const aoConcluir = function (id) { passoGravado.id = id; montagemGravada.push(passoGravado) }
+				const aoConcluir = function (id) { passoGravado.id = id; montagemGravada.push(passoGravado); atualizarModeloAR() }
 				tipo == "chao" ? criaObjetoChao(modeloEscolhido, xEscolhido, yEscolhido, aoConcluir) : criaObjetoCima(modeloEscolhido, xEscolhido, yEscolhido, indexEscolhido, aoConcluir)
 			}
 			for (let j = 0; j < tipo == "chao" ? botoes3d.length : botoes3dCima.length; j++) {
@@ -1470,6 +1472,7 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 				criaObjetoCima(modeloEscolhido, xEscolhido, yEscolhido, indexEscolhido, function (id) {
 					passoGravado.id = id
 					montagemGravada.push(passoGravado)
+					atualizarModeloAR()
 				})
 			}
 			for (let j = 0; j < tipo == "chao" ? botoes3d.length : botoes3dCima.length; j++) {
@@ -1638,48 +1641,67 @@ const modelViewerAR = document.createElement('model-viewer');
 modelViewerAR.setAttribute('ar', '');
 modelViewerAR.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
 modelViewerAR.style.position = 'fixed';
+// top/left explícitos: sem eles o elemento fica na posição estática (fim do body),
+// fora da viewport — e o model-viewer usa IntersectionObserver pra só carregar o
+// modelo quando está visível, então "escondido" fora da tela nunca carrega.
+modelViewerAR.style.top = '0';
+modelViewerAR.style.left = '0';
 modelViewerAR.style.width = '1px';
 modelViewerAR.style.height = '1px';
 modelViewerAR.style.opacity = '0';
 modelViewerAR.style.pointerEvents = 'none';
 document.body.appendChild(modelViewerAR);
 
-async function exportarMontagemParaGLB() {
+// Mantém o <model-viewer> com a montagem atual pré-carregada, para o clique no botão
+// poder chamar activateAR() de forma síncrona — Scene Viewer/Quick Look só abrem se
+// ativados dentro do próprio gesto de clique; exportar/carregar o GLB depois do clique
+// perde esse gesto e o navegador bloqueia a RA sem avisar nada.
+let ultimoBlobURLAR = null;
+let modeloARPronto = false;
+
+async function atualizarModeloAR() {
+	if (!dispositivoMovel || (ids.length === 0 && idsCima.length === 0)) return;
+
+	modeloARPronto = false;
 	const exporter = new GLTFExporter();
 	const glb = await exporter.parseAsync(scene, { binary: true });
-	return URL.createObjectURL(new Blob([glb], { type: 'model/gltf-binary' }));
+	const url = URL.createObjectURL(new Blob([glb], { type: 'model/gltf-binary' }));
+
+	await new Promise(function (resolve) {
+		modelViewerAR.addEventListener('load', resolve, { once: true });
+		modelViewerAR.src = url;
+	});
+
+	if (ultimoBlobURLAR) URL.revokeObjectURL(ultimoBlobURLAR);
+	ultimoBlobURLAR = url;
+	modeloARPronto = true;
 }
 
 btnRa.title = 'Ver em Realidade Aumentada';
 
-btnRa.addEventListener('pointerdown', async function () {
+btnRa.addEventListener('pointerdown', function () {
 	if (!dispositivoMovel) {
 		abrirModalQRCode();
 		return;
 	}
 
-	btnRa.disabled = true;
-	try {
-		const url = await exportarMontagemParaGLB();
-		modelViewerAR.addEventListener('load', function aoCarregar() {
-			modelViewerAR.removeEventListener('load', aoCarregar);
-			modelViewerAR.activateAR();
-		}, { once: true });
-		modelViewerAR.src = url;
-	} catch (erro) {
-		console.warn('Não foi possível exportar a montagem para RA', erro);
-		abrirModalQRCode();
-	} finally {
-		btnRa.disabled = false;
+	if (!modeloARPronto) {
+		console.warn('Modelo de RA ainda não estava pronto a tempo do clique.');
+		return;
 	}
+
+	modelViewerAR.activateAR();
 });
 
-// Se a página foi aberta via QR Code, remonta automaticamente a montagem antes de liberar o botão de RA
+// Se a página foi aberta via QR Code, remonta automaticamente a montagem e já deixa o
+// modelo de RA pré-carregado, antes de liberar o botão
 if (receitaURL) {
 	btnRa.disabled = true;
-	remontarDaURL(desserializarMontagem(receitaURL)).finally(function () {
-		btnRa.disabled = false;
-	});
+	remontarDaURL(desserializarMontagem(receitaURL))
+		.then(atualizarModeloAR)
+		.finally(function () {
+			btnRa.disabled = false;
+		});
 }
 
 function animate() {
