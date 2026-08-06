@@ -1,5 +1,6 @@
 export class Objetos{
     armario ={
+        chave: "armario",
         nome: "Armário",
         local: import.meta.env.VITE_ARMARIO_GLB_URL,
         colocarCima: false,
@@ -14,6 +15,7 @@ export class Objetos{
         img: import.meta.env.VITE_ARMARIO_IMG_URL
     }
     balcao ={
+        chave: "balcao",
         nome: "Balcão",
         local: import.meta.env.VITE_BALCAO_GLB_URL,
         colocarCima: true,
@@ -28,6 +30,7 @@ export class Objetos{
         img: import.meta.env.VITE_BALCAO_IMG_URL
     }
     balcaoGrande ={
+        chave: "balcaoGrande",
         nome: "Balcão Grande",
         local: import.meta.env.VITE_BALCAO_GRANDE_GLB_URL,
         colocarCima: true,
@@ -42,6 +45,7 @@ export class Objetos{
         img: import.meta.env.VITE_BALCAO_GRANDE_IMG_URL
     }
     paneleiro = {
+        chave: "paneleiro",
         nome: "Paneleiro",
         local: import.meta.env.VITE_PANELEIRO_GLB_URL,
         colocarCima: false,
@@ -57,6 +61,7 @@ export class Objetos{
     }
 
     armarioGrande ={
+        chave: "armarioGrande",
         nome: "Armário Grande",
         local: import.meta.env.VITE_ARMARIO_GRANDE_GLB_URL,
         colocarCima: true,

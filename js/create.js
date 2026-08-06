@@ -156,7 +156,12 @@ for (let i = 0; i < objetos.todosObjetos.length; i++) {
 			botoes[i].button.classList.remove('btnAtivo')
 		}
 		button.classList.add("btnAtivo")
-		if (ids.length == 0 || idsCima.length == 0) criaObjeto(objetos.todosObjetos[i])
+		if (ids.length == 0 || idsCima.length == 0) {
+			const chaveModelo = objetos.todosObjetos[i].chave
+			criaObjeto(objetos.todosObjetos[i], undefined, undefined, function (id) {
+				montagemGravada.push({ fn: 'i', k: chaveModelo, id: id })
+			})
+		}
 		// menuDiv.classList.add("hide");
 		else {
 			modeloEscolhido = objetos.todosObjetos[i]
@@ -199,6 +204,8 @@ let valorXMaior = -10;
 let quantidadeItens = 0;
 
 let movelEscolhido;
+// Sequência de peças montadas, usada para reconstruir a montagem quando aberta via QR Code
+let montagemGravada = [];
 const menuLabel = new CSS2DObject(menuDiv);
 
 const btnCompartilhar = document.createElement('button');
@@ -325,17 +332,63 @@ modalQRCodeConteudo.appendChild(modalQRCodeImagem);
 modalQRCode.appendChild(modalQRCodeConteudo);
 document.body.appendChild(modalQRCode);
 
+function serializarMontagem() {
+	return montagemGravada.map(function (passo) {
+		return passo.fn === 'i'
+			? 'i:' + passo.k
+			: passo.fn + ':' + passo.k + ':' + passo.px + ':' + passo.py + ':' + passo.idx;
+	}).join('|');
+}
+
+function desserializarMontagem(texto) {
+	return texto.split('|').filter(Boolean).map(function (trecho) {
+		const partes = trecho.split(':');
+		if (partes[0] === 'i') return { fn: 'i', k: partes[1] };
+		return { fn: partes[0], k: partes[1], px: Number(partes[2]), py: Number(partes[3]), idx: Number(partes[4]) };
+	});
+}
+
 function abrirModalQRCode() {
 	const qr = qrcode(0, 'M');
-	qr.addData(window.location.href);
+	const url = new URL(window.location.href);
+	url.search = '';
+	if (montagemGravada.length > 0) {
+		url.searchParams.set('m', serializarMontagem());
+	}
+	qr.addData(url.toString());
 	qr.make();
 	modalQRCodeImagem.innerHTML = qr.createSvgTag({ cellSize: 5, margin: 8, scalable: true });
 	modalQRCode.classList.remove('hide');
 }
 
+// Reconstrói, na ordem gravada, a montagem recebida por URL (usado ao abrir via QR Code)
+function remontarDaURL(receita) {
+	return receita.reduce(function (promessaAnterior, passo) {
+		return promessaAnterior.then(function () {
+			const modelo = objetos.todosObjetos.find(function (o) { return o.chave === passo.k; });
+			if (!modelo) return;
+
+			return new Promise(function (resolve) {
+				if (passo.fn === 'i') {
+					criaObjeto(modelo, undefined, undefined, resolve);
+					return;
+				}
+				modeloEscolhido = modelo;
+				indexEscolhido = passo.idx;
+				uuidEscolhido = passo.fn === 'c' ? ids[passo.idx] : idsCima[passo.idx];
+				if (passo.fn === 'c') {
+					criaObjetoChao(modelo, passo.px, passo.py, resolve);
+				} else {
+					criaObjetoCima(modelo, passo.px, passo.py, passo.idx, resolve);
+				}
+			});
+		});
+	}, Promise.resolve());
+}
+
 // criaObjetos
 
-function criaObjeto(modelo, x, y) {
+function criaObjeto(modelo, x, y, onDone) {
 
 	loader.load(
 		// resource URL
@@ -418,6 +471,7 @@ function criaObjeto(modelo, x, y) {
 			createButtonAdd(-1, 0, scene.getObjectById(idsCima[0]), 0, "cima")
 			createButtonAdd(0, 1, scene.getObjectById(idsCima[0]), 0, "cima")
 			if (ids.length > 0 && idsCima.length > 0) addButton.classList.add('hide')
+			if (onDone) onDone(gltf.scene.id);
 		},
 		// called while loading is progressing
 		function (xhr) {},
@@ -426,7 +480,7 @@ function criaObjeto(modelo, x, y) {
 	);
 
 }
-function criaObjetoChao(modelo, px, py) {
+function criaObjetoChao(modelo, px, py, onDone) {
 	loader.load(
 		// resource URL
 		modelo.local,
@@ -602,6 +656,7 @@ function criaObjetoChao(modelo, px, py) {
 					totaly: tamanhoy
 				}
 			}
+			if (onDone) onDone(gltf.scene.id);
 		},
 		// called while loading is progressing
 		function (xhr) {},
@@ -611,7 +666,7 @@ function criaObjetoChao(modelo, px, py) {
 
 }
 
-function criaObjetoCima(modelo, px, py, index) {
+function criaObjetoCima(modelo, px, py, index, onDone) {
 	loader.load(
 		// resource URL
 		modelo.local,
@@ -780,6 +835,7 @@ function criaObjetoCima(modelo, px, py, index) {
 					modelo: gltf.scene.id
 				}
 			}
+			if (onDone) onDone(gltf.scene.id);
 		},
 		// called while loading is progressing
 		function (xhr) {},
@@ -789,10 +845,32 @@ function criaObjetoCima(modelo, px, py, index) {
 
 }
 
+// Remove da sequência gravada a peça correspondente ao objeto apagado, para o QR Code
+// refletir sempre a montagem atual (não o histórico completo de tudo que já foi adicionado)
+function removerDaGravacao(obj, outroObj, posicaoRemovida) {
+	if (obj.name == "cubo") {
+		// Removeu clicando num espaço vazio: some a peça real que estava do outro lado, e a coluna inteira é reindexada
+		const idRemovido = outroObj.id;
+		montagemGravada = montagemGravada
+			.filter(function (passo) { return passo.id !== idRemovido; })
+			.map(function (passo) {
+				if (typeof passo.idx === 'number' && passo.idx > posicaoRemovida) {
+					return Object.assign({}, passo, { idx: passo.idx - 1 });
+				}
+				return passo;
+			});
+	} else {
+		// Removeu a peça real: ela vira um espaço vazio, sem afetar os índices das demais
+		montagemGravada = montagemGravada.filter(function (passo) { return passo.id !== obj.id; });
+	}
+}
+
 function remove() {
 	const obj = scene.getObjectById(uuidEscolhido);
 
 	let outroObj = obj.userData.modelo.tipo == "chao" ? scene.getObjectById(idsCima[indexEscolhido]) : scene.getObjectById(ids[indexEscolhido]);
+
+	removerDaGravacao(obj, outroObj, indexEscolhido);
 
 	for (let i = 0; i < botoes3d.length; i++) {
 		scene.getObjectById(botoes3d[i].direita).visible = false
@@ -1215,7 +1293,11 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 				}
 
 			}
-			tipo == "chao" ? criaObjetoChao(modeloEscolhido, xEscolhido, yEscolhido) : criaObjetoCima(modeloEscolhido, xEscolhido, yEscolhido)
+			{
+				const passoGravado = { fn: tipo == "chao" ? 'c' : 't', k: modeloEscolhido.chave, px: xEscolhido, py: yEscolhido, idx: indexEscolhido }
+				const aoConcluir = function (id) { passoGravado.id = id; montagemGravada.push(passoGravado) }
+				tipo == "chao" ? criaObjetoChao(modeloEscolhido, xEscolhido, yEscolhido, aoConcluir) : criaObjetoCima(modeloEscolhido, xEscolhido, yEscolhido, indexEscolhido, aoConcluir)
+			}
 			for (let j = 0; j < tipo == "chao" ? botoes3d.length : botoes3dCima.length; j++) {
 				const botaoDireita = scene.getObjectById(tipo == "chao" ? botoes3d[j].direita : botoes3dCima[j].direita);
 				const botaoEsquerda = scene.getObjectById(tipo == "chao" ? botoes3d[j].esquerda : botoes3dCima[j].esquerda);
@@ -1301,7 +1383,11 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 				}
 
 			}
-			tipo == "chao" ? criaObjetoChao(modeloEscolhido, xEscolhido, yEscolhido) : criaObjetoCima(modeloEscolhido, xEscolhido, yEscolhido)
+			{
+				const passoGravado = { fn: tipo == "chao" ? 'c' : 't', k: modeloEscolhido.chave, px: xEscolhido, py: yEscolhido, idx: indexEscolhido }
+				const aoConcluir = function (id) { passoGravado.id = id; montagemGravada.push(passoGravado) }
+				tipo == "chao" ? criaObjetoChao(modeloEscolhido, xEscolhido, yEscolhido, aoConcluir) : criaObjetoCima(modeloEscolhido, xEscolhido, yEscolhido, indexEscolhido, aoConcluir)
+			}
 			for (let j = 0; j < tipo == "chao" ? botoes3d.length : botoes3dCima.length; j++) {
 				const botaoDireita = scene.getObjectById(tipo == "chao" ? botoes3d[j].direita : botoes3dCima[j].direita);
 				const botaoEsquerda = scene.getObjectById(tipo == "chao" ? botoes3d[j].esquerda : botoes3dCima[j].esquerda);
@@ -1368,7 +1454,13 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 
 			}
 
-			criaObjetoCima(modeloEscolhido, xEscolhido, yEscolhido)
+			{
+				const passoGravado = { fn: 't', k: modeloEscolhido.chave, px: xEscolhido, py: yEscolhido, idx: indexEscolhido }
+				criaObjetoCima(modeloEscolhido, xEscolhido, yEscolhido, indexEscolhido, function (id) {
+					passoGravado.id = id
+					montagemGravada.push(passoGravado)
+				})
+			}
 			for (let j = 0; j < tipo == "chao" ? botoes3d.length : botoes3dCima.length; j++) {
 				const botaoDireita = scene.getObjectById(tipo == "chao" ? botoes3d[j].direita : botoes3dCima[j].direita);
 				const botaoEsquerda = scene.getObjectById(tipo == "chao" ? botoes3d[j].esquerda : botoes3dCima[j].esquerda);
@@ -1597,6 +1689,15 @@ if ('xr' in navigator) {
 	});
 } else {
 	btnRa.title = 'Ver no celular via QR Code';
+}
+
+// Se a página foi aberta via QR Code, remonta automaticamente a montagem antes de liberar o botão de RA
+const receitaDaURL = new URLSearchParams(window.location.search).get('m');
+if (receitaDaURL) {
+	btnRa.disabled = true;
+	remontarDaURL(desserializarMontagem(receitaDaURL)).finally(function () {
+		btnRa.disabled = false;
+	});
 }
 
 function animate(timestamp, frame) {
