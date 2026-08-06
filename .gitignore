@@ -3,4 +3,5 @@ dist
 .env
 .env.local
 simpleXr-construtor.zip
+model/glb
 
