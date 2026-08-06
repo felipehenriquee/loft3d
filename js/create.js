@@ -295,6 +295,9 @@ if (modoVisualizacao) {
 	btnVoltar.classList.add('hide');
 	addButton.classList.add('hide');
 	info.classList.add('hide');
+	// O "right: 450px" do .btnRa pressupõe os 400px do menu lateral, que aqui não existem;
+	// sem isso o botão fica fora da tela em telas estreitas (celular)
+	btnRa.style.right = '20px';
 }
 
 // Retículo usado para indicar onde o conjunto será posicionado em RA
