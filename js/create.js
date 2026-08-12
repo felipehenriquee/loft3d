@@ -11,10 +11,38 @@ import { Objetos } from './objects.js';
 import { qrcode } from './../src/qrcode/qrcode.js';
 import '@google/model-viewer';
 
-let ids = []
-let idsCima = []
-let botoes3d = []
-let botoes3dCima = []
+// Estado compartilhado pela lógica de montagem/seleção/câmera. Consolidado num único objeto
+// (em vez de dezenas de variáveis globais soltas) pra deixar explícito o que é lido/escrito
+// pelas funções abaixo — isso já foi causa direta de bugs sutis nesse arquivo.
+const state = {
+	groundIds: [],
+	topIds: [],
+	groundButtons: [],
+	topButtons: [],
+	selectedColor: "#ffffff",
+	selectedDirectionX: 0,
+	selectedDirectionY: 0,
+	selectedObjectId: "",
+	hoveredObjectId: "",
+	isAddingModule: false,
+	selectedSide: undefined,
+	selectedModel: undefined,
+	selectedIndex: undefined,
+	previousHoverIndex: undefined,
+	totalWidth: 0,
+	totalHeight: 0,
+	totalDepth: 0,
+	cameraTargetX: 0,
+	cameraTargetY: 0,
+	cameraTargetZ: 0,
+	minX: 10,
+	maxX: -10,
+	itemCount: 0,
+	selectedPieceInfo: undefined,
+	assemblySteps: [],
+	lastArBlobUrl: null,
+	isArModelReady: false
+};
 
 // Aberto via QR Code: mostra só o móvel montado + botão de RA, sem edição
 const receitaURL = new URLSearchParams(window.location.search).get('m');
@@ -83,7 +111,6 @@ const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
 
 // adicionar primeiro cubo
 const cube = new THREE.Mesh(geometry, material)
-const cubos = [];
 
 // criação menu
 const menuDiv = document.createElement('div');
@@ -158,26 +185,26 @@ for (let i = 0; i < objetos.todosObjetos.length; i++) {
 	button.className = 'botaoEscolha backgroundImage';
 	button.style.backgroundImage = `url('${objetos.todosObjetos[i].img}')`
 	button.addEventListener('pointerdown', function (event) {
-		movelEscolhido = { tipo: objetos.todosObjetos[i].tipo == "chao" ? "chao" : "cima", tamanhox: objetos.todosObjetos[i].tamanhox }
-		corEscolhida = "#E56399";
+		state.selectedPieceInfo = { tipo: objetos.todosObjetos[i].tipo == "chao" ? "chao" : "cima", tamanhox: objetos.todosObjetos[i].tamanhox }
+		state.selectedColor = "#E56399";
 		removeButton.classList.add('hide')
 		for (let i = 0; i < botoes.length; i++) {
 			botoes[i].button.classList.remove('btnAtivo')
 		}
 		button.classList.add("btnAtivo")
-		if (ids.length == 0 || idsCima.length == 0) {
+		if (state.groundIds.length == 0 || state.topIds.length == 0) {
 			const chaveModelo = objetos.todosObjetos[i].chave
 			criaObjeto(objetos.todosObjetos[i], undefined, undefined, function (id) {
-				montagemGravada.push({ fn: 'i', k: chaveModelo, id: id })
+				state.assemblySteps.push({ fn: 'i', k: chaveModelo, id: id })
 				atualizarModeloAR()
 			})
 		}
 		// menuDiv.classList.add("hide");
 		else {
-			modeloEscolhido = objetos.todosObjetos[i]
+			state.selectedModel = objetos.todosObjetos[i]
 			verificaPosBotoes()
 		}
-		adicionaCubo = false;
+		state.isAddingModule = false;
 		resetaCamera();
 
 	});
@@ -189,33 +216,6 @@ for (let i = 0; i < objetos.todosObjetos.length; i++) {
 	}
 }
 
-let corEscolhida = "#ffffff";
-let positionEscolhida = "#ffffff";
-let xEscolhido = 0;
-let yEscolhido = 0;
-let uuidEscolhido = "";
-let uuidEscolhidoTemporario = "";
-let adicionaCubo = false;
-let ladoEscolhido;
-let ladoEscolhidoTemporario;
-let modeloEscolhido
-let indexEscolhido;
-let indexEscolhidoTemporario;
-let indexAntigo;
-let valorLargura = 0;
-let valorAltura = 0;
-let valorProfundidade = 0;
-let tamanhoCamera = 8;
-let cameraInicialx = 0
-let cameraInicialy = 0
-let cameraInicialz = 0
-let valorXMenor = 10;
-let valorXMaior = -10;
-let quantidadeItens = 0;
-
-let movelEscolhido;
-// Sequência de peças montadas, usada para reconstruir a montagem quando aberta via QR Code
-let montagemGravada = [];
 const menuLabel = new CSS2DObject(menuDiv);
 
 const btnCompartilhar = document.createElement('button');
@@ -233,7 +233,7 @@ const botaoRa = new CSS2DObject(btnRa);
 const removeButton = document.createElement('button');
 removeButton.className = 'btnRemove backgroundImage hide';
 removeButton.addEventListener('pointerdown', function (event) {
-	indexEscolhido = indexEscolhido
+	state.selectedIndex = state.selectedIndex
 	remove()
 	removeButton.classList.add('hide')
 });
@@ -244,7 +244,7 @@ btnRemove.position.setZ(0.6)
 const addButton = document.createElement('button');
 addButton.className = 'btnAdd backgroundImage addMain';
 addButton.addEventListener('pointerdown', function (event) {
-	uuidEscolhido = uuidEscolhidoTemporario;
+	state.selectedObjectId = state.hoveredObjectId;
 });
 const btnAdd = new CSS3DObject(addButton);
 btnAdd.scale.set(0.01, 0.01, 1)
@@ -255,12 +255,12 @@ btnAdd.position.setX(-1.5)
 const info = document.createElement('div')
 info.classList.add('infoTamanho')
 const largura = document.createElement('p')
-largura.innerText = "Largura: " + valorLargura
+largura.innerText = "Largura: " + state.totalWidth
 const altura = document.createElement('p')
-altura.innerText = "Altura: " + valorAltura
+altura.innerText = "Altura: " + state.totalHeight
 
 const profundidade = document.createElement('p')
-profundidade.innerText = "Profundidade: " + valorProfundidade
+profundidade.innerText = "Profundidade: " + state.totalDepth
 
 info.appendChild(largura)
 info.appendChild(altura)
@@ -334,7 +334,7 @@ modalQRCode.appendChild(modalQRCodeConteudo);
 document.body.appendChild(modalQRCode);
 
 function serializarMontagem() {
-	return montagemGravada.map(function (passo) {
+	return state.assemblySteps.map(function (passo) {
 		return passo.fn === 'i'
 			? 'i:' + passo.k
 			: passo.fn + ':' + passo.k + ':' + passo.px + ':' + passo.py + ':' + passo.idx;
@@ -353,7 +353,7 @@ function abrirModalQRCode() {
 	const qr = qrcode(0, 'M');
 	const url = new URL(window.location.href);
 	url.search = '';
-	if (montagemGravada.length > 0) {
+	if (state.assemblySteps.length > 0) {
 		url.searchParams.set('m', serializarMontagem());
 	}
 	qr.addData(url.toString());
@@ -374,9 +374,9 @@ function remontarDaURL(receita) {
 					criaObjeto(modelo, undefined, undefined, resolve);
 					return;
 				}
-				modeloEscolhido = modelo;
-				indexEscolhido = passo.idx;
-				uuidEscolhido = passo.fn === 'c' ? ids[passo.idx] : idsCima[passo.idx];
+				state.selectedModel = modelo;
+				state.selectedIndex = passo.idx;
+				state.selectedObjectId = passo.fn === 'c' ? state.groundIds[passo.idx] : state.topIds[passo.idx];
 				if (passo.fn === 'c') {
 					criaObjetoChao(modelo, passo.px, passo.py, resolve);
 				} else {
@@ -404,17 +404,17 @@ function criaObjeto(modelo, x, y, onDone) {
 			gltf.scene.box3 = cube1BB;
 			let tamanhox = cube1BB.max.x - cube1BB.min.x;
 
-			valorLargura = (valorLargura + tamanhox)
+			state.totalWidth = (state.totalWidth + tamanhox)
 
-			largura.innerText = "Largura: " + valorLargura.toFixed(2)
+			largura.innerText = "Largura: " + state.totalWidth.toFixed(2)
 
 			handleCameraOnAdd(0);
 			let tamanhoy = cube1BB.max.y - cube1BB.min.y;
 			let tamanhoz = cube1BB.max.z - cube1BB.min.z;
-			valorAltura = tamanhoy
-			valorProfundidade = tamanhoz
-			altura.innerText = "Altura: " + valorLargura.toFixed(2) + "m"
-			profundidade.innerText = "Profundidade: " + valorProfundidade.toFixed(2) + "m"
+			state.totalHeight = tamanhoy
+			state.totalDepth = tamanhoz
+			altura.innerText = "Altura: " + state.totalWidth.toFixed(2) + "m"
+			profundidade.innerText = "Profundidade: " + state.totalDepth.toFixed(2) + "m"
 
 			gltf.scene.userData = {
 				modelo: modelo,
@@ -437,12 +437,12 @@ function criaObjeto(modelo, x, y, onDone) {
 			gltf.scene.name = modelo.nome
 			gltf.scene.position.setX(-1.5)
 			if (modelo.tamanhoy == 1) {
-				modelo.tipo == "chao" ? ids.push(gltf.scene.id) : idsCima.push(gltf.scene.id)
+				modelo.tipo == "chao" ? state.groundIds.push(gltf.scene.id) : state.topIds.push(gltf.scene.id)
 				modelo.tipo == "chao" ? criaCuboCima(true) : criaCubo(true)
 			}
 			else {
-				ids.push(gltf.scene.id)
-				idsCima.push(gltf.scene.id)
+				state.groundIds.push(gltf.scene.id)
+				state.topIds.push(gltf.scene.id)
 
 			}
 
@@ -459,20 +459,20 @@ function criaObjeto(modelo, x, y, onDone) {
 				baixo: "",
 			}
 
-			botoes3d.push(botao)
-			botoes3dCima.push(botaoCima)
+			state.groundButtons.push(botao)
+			state.topButtons.push(botaoCima)
 
-			createButtonAdd(1, 0, scene.getObjectById(ids[0]), 0, "chao")
+			createButtonAdd(1, 0, scene.getObjectById(state.groundIds[0]), 0, "chao")
 
-			createButtonAdd(-1, 0, scene.getObjectById(ids[0]), 0, "chao")
-			createButtonAdd(0, 1, scene.getObjectById(ids[0]), 0, "chao")
-			createButtonAdd(0, -1, scene.getObjectById(ids[0]), 0, "chao")
+			createButtonAdd(-1, 0, scene.getObjectById(state.groundIds[0]), 0, "chao")
+			createButtonAdd(0, 1, scene.getObjectById(state.groundIds[0]), 0, "chao")
+			createButtonAdd(0, -1, scene.getObjectById(state.groundIds[0]), 0, "chao")
 
-			createButtonAdd(1, 0, scene.getObjectById(idsCima[0]), 0, "cima")
+			createButtonAdd(1, 0, scene.getObjectById(state.topIds[0]), 0, "cima")
 
-			createButtonAdd(-1, 0, scene.getObjectById(idsCima[0]), 0, "cima")
-			createButtonAdd(0, 1, scene.getObjectById(idsCima[0]), 0, "cima")
-			if (ids.length > 0 && idsCima.length > 0) addButton.classList.add('hide')
+			createButtonAdd(-1, 0, scene.getObjectById(state.topIds[0]), 0, "cima")
+			createButtonAdd(0, 1, scene.getObjectById(state.topIds[0]), 0, "cima")
+			if (state.groundIds.length > 0 && state.topIds.length > 0) addButton.classList.add('hide')
 			if (onDone) onDone(gltf.scene.id);
 		},
 		// called while loading is progressing
@@ -492,20 +492,20 @@ function criaObjetoChao(modelo, px, py, onDone) {
 			let cube2BB = new THREE.Box3(new THREE.Vector3(), new THREE.Vector3());
 			cube2BB.setFromObject(gltf.scene)
 			gltf.scene.box3 = cube2BB;
-			let cubeEscolhido = scene.getObjectById(uuidEscolhido);
+			let cubeEscolhido = scene.getObjectById(state.selectedObjectId);
 
 			let tamanhox = cube2BB.max.x - cube2BB.min.x;
-			valorLargura = valorLargura + tamanhox;
+			state.totalWidth = state.totalWidth + tamanhox;
 
 			handleCameraOnAdd(cubeEscolhido.position.x);
-			largura.innerText = "Largura: " + valorLargura.toFixed(2) + "m"
+			largura.innerText = "Largura: " + state.totalWidth.toFixed(2) + "m"
 			let tamanhoy = cube2BB.max.y - cube2BB.min.y;
-			valorAltura = tamanhoy
+			state.totalHeight = tamanhoy
 
 			const tamanhoz = cube2BB.max.z - cube2BB.min.z;
-			valorProfundidade = tamanhoz
-			profundidade.innerText = "Profundidade: " + valorProfundidade.toFixed(2) + "m"
-			altura.innerText = "Altura: " + valorAltura.toFixed(2) + "m"
+			state.totalDepth = tamanhoz
+			profundidade.innerText = "Profundidade: " + state.totalDepth.toFixed(2) + "m"
+			altura.innerText = "Altura: " + state.totalHeight.toFixed(2) + "m"
 			gltf.scene.position.setY(gltf.scene.position.y + (gltf.scene.position.y - cube2BB.min.y))
 
 			gltf.scene.userData = {
@@ -523,11 +523,11 @@ function criaObjetoChao(modelo, px, py, onDone) {
 			// direita
 			if (px > 0) {
 
-				let cubeDireita = ids[indexEscolhido + 1] ? scene.getObjectById(ids[indexEscolhido + 1]) : null
+				let cubeDireita = state.groundIds[state.selectedIndex + 1] ? scene.getObjectById(state.groundIds[state.selectedIndex + 1]) : null
 				if (cubeDireita && cubeDireita.name == "cubo") {
 					scene.remove(cubeDireita)
 				}
-				ids[indexEscolhido + 1] ? ids[indexEscolhido + 1] = gltf.scene.id : ids.push(gltf.scene.id)
+				state.groundIds[state.selectedIndex + 1] ? state.groundIds[state.selectedIndex + 1] = gltf.scene.id : state.groundIds.push(gltf.scene.id)
 
 				gltf.scene.position.setX(cubeEscolhido.position.x + (cubeEscolhido.box3.max.x) + gltf.scene.box3.max.x);
 
@@ -549,8 +549,8 @@ function criaObjetoChao(modelo, px, py, onDone) {
 					preenchido: true,
 					id: gltf.scene.id
 				}
-				if (!idsCima[indexEscolhido + 1])
-					modelo.tamanhoy == 1 ? criaCuboCima(true) : idsCima.push(gltf.scene.id);
+				if (!state.topIds[state.selectedIndex + 1])
+					modelo.tamanhoy == 1 ? criaCuboCima(true) : state.topIds.push(gltf.scene.id);
 				let botao = {
 					direita: "",
 					esquerda: "",
@@ -564,25 +564,25 @@ function criaObjetoChao(modelo, px, py, onDone) {
 					baixo: "",
 				}
 
-				botoes3dCima[indexEscolhido + 1] ? botoes3dCima[indexEscolhido + 1] = botoes3dCima[indexEscolhido + 1] : botoes3dCima.push(botaoCima)
-				botoes3d[indexEscolhido + 1] ? botoes3d[indexEscolhido + 1] = botoes3d[indexEscolhido + 1] : botoes3d.push(botao)
-				createButtonAdd(1, 0, gltf.scene, indexEscolhido + 1, "chao")
-				createButtonAdd(-1, 0, gltf.scene, indexEscolhido + 1, "chao")
-				createButtonAdd(0, 1, gltf.scene, indexEscolhido + 1, "chao")
-				createButtonAdd(0, -1, gltf.scene, indexEscolhido + 1, "chao")
+				state.topButtons[state.selectedIndex + 1] ? state.topButtons[state.selectedIndex + 1] = state.topButtons[state.selectedIndex + 1] : state.topButtons.push(botaoCima)
+				state.groundButtons[state.selectedIndex + 1] ? state.groundButtons[state.selectedIndex + 1] = state.groundButtons[state.selectedIndex + 1] : state.groundButtons.push(botao)
+				createButtonAdd(1, 0, gltf.scene, state.selectedIndex + 1, "chao")
+				createButtonAdd(-1, 0, gltf.scene, state.selectedIndex + 1, "chao")
+				createButtonAdd(0, 1, gltf.scene, state.selectedIndex + 1, "chao")
+				createButtonAdd(0, -1, gltf.scene, state.selectedIndex + 1, "chao")
 
-				createButtonAdd(1, 0, scene.getObjectById(idsCima[indexEscolhido + 1]), indexEscolhido + 1, "cima")
-				createButtonAdd(-1, 0, scene.getObjectById(idsCima[indexEscolhido + 1]), indexEscolhido + 1, "cima")
-				createButtonAdd(0, 1, scene.getObjectById(idsCima[indexEscolhido + 1]), indexEscolhido + 1, "cima")
+				createButtonAdd(1, 0, scene.getObjectById(state.topIds[state.selectedIndex + 1]), state.selectedIndex + 1, "cima")
+				createButtonAdd(-1, 0, scene.getObjectById(state.topIds[state.selectedIndex + 1]), state.selectedIndex + 1, "cima")
+				createButtonAdd(0, 1, scene.getObjectById(state.topIds[state.selectedIndex + 1]), state.selectedIndex + 1, "cima")
 
 				//moveCamera(1)
 				// esquerda
 			} else if (px < 0) {
-				let cubeEsquerda = ids[indexEscolhido - 1] ? scene.getObjectById(ids[indexEscolhido - 1]) : null
+				let cubeEsquerda = state.groundIds[state.selectedIndex - 1] ? scene.getObjectById(state.groundIds[state.selectedIndex - 1]) : null
 				if (cubeEsquerda && cubeEsquerda.name == "cubo") {
 					scene.remove(cubeEsquerda)
 				}
-				ids[indexEscolhido - 1] ? ids[indexEscolhido - 1] = gltf.scene.id : ids.unshift(gltf.scene.id)
+				state.groundIds[state.selectedIndex - 1] ? state.groundIds[state.selectedIndex - 1] = gltf.scene.id : state.groundIds.unshift(gltf.scene.id)
 				gltf.scene.userData.centroEsquerda = true;
 				gltf.scene.position.setX(cubeEscolhido.position.x + (cubeEscolhido.box3.min.x) + gltf.scene.box3.min.x);
 
@@ -605,7 +605,7 @@ function criaObjetoChao(modelo, px, py, onDone) {
 					preenchido: true,
 					id: gltf.scene.id
 				}
-				if (!idsCima[indexEscolhido - 1]) modelo.tamanhoy == 1 ? criaCuboCima(true) : idsCima.unshift(gltf.scene.id)
+				if (!state.topIds[state.selectedIndex - 1]) modelo.tamanhoy == 1 ? criaCuboCima(true) : state.topIds.unshift(gltf.scene.id)
 
 				let botao = {
 					direita: "",
@@ -621,16 +621,16 @@ function criaObjetoChao(modelo, px, py, onDone) {
 					baixo: "",
 				}
 
-				botoes3d[indexEscolhido - 1] ? botoes[indexEscolhido - 1] = botoes[indexEscolhido - 1] : botoes3d.unshift(botao)
-				botoes3dCima[indexEscolhido - 1] ? botoes3dCima[indexEscolhido - 1] = botoes3dCima[indexEscolhido - 1] : botoes3dCima.unshift(botaoCima)
-				createButtonAdd(1, 0, gltf.scene, indexEscolhido - 1 <= 0 ? 0 : indexEscolhido - 1, "chao")
-				createButtonAdd(-1, 0, gltf.scene, indexEscolhido - 1 <= 0 ? 0 : indexEscolhido - 1, "chao")
-				createButtonAdd(0, 1, gltf.scene, indexEscolhido - 1 <= 0 ? 0 : indexEscolhido - 1, "chao")
-				createButtonAdd(0, -1, gltf.scene, indexEscolhido - 1 <= 0 ? 0 : indexEscolhido - 1, "chao")
+				state.groundButtons[state.selectedIndex - 1] ? botoes[state.selectedIndex - 1] = botoes[state.selectedIndex - 1] : state.groundButtons.unshift(botao)
+				state.topButtons[state.selectedIndex - 1] ? state.topButtons[state.selectedIndex - 1] = state.topButtons[state.selectedIndex - 1] : state.topButtons.unshift(botaoCima)
+				createButtonAdd(1, 0, gltf.scene, state.selectedIndex - 1 <= 0 ? 0 : state.selectedIndex - 1, "chao")
+				createButtonAdd(-1, 0, gltf.scene, state.selectedIndex - 1 <= 0 ? 0 : state.selectedIndex - 1, "chao")
+				createButtonAdd(0, 1, gltf.scene, state.selectedIndex - 1 <= 0 ? 0 : state.selectedIndex - 1, "chao")
+				createButtonAdd(0, -1, gltf.scene, state.selectedIndex - 1 <= 0 ? 0 : state.selectedIndex - 1, "chao")
 
-				createButtonAdd(1, 0, scene.getObjectById(idsCima[indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0]), indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0, "cima")
-				createButtonAdd(-1, 0, scene.getObjectById(idsCima[indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0]), indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0, "cima")
-				createButtonAdd(0, 1, scene.getObjectById(idsCima[indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0]), indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0, "cima")
+				createButtonAdd(1, 0, scene.getObjectById(state.topIds[state.selectedIndex - 1 >= 0 ? state.selectedIndex - 1 : 0]), state.selectedIndex - 1 >= 0 ? state.selectedIndex - 1 : 0, "cima")
+				createButtonAdd(-1, 0, scene.getObjectById(state.topIds[state.selectedIndex - 1 >= 0 ? state.selectedIndex - 1 : 0]), state.selectedIndex - 1 >= 0 ? state.selectedIndex - 1 : 0, "cima")
+				createButtonAdd(0, 1, scene.getObjectById(state.topIds[state.selectedIndex - 1 >= 0 ? state.selectedIndex - 1 : 0]), state.selectedIndex - 1 >= 0 ? state.selectedIndex - 1 : 0, "cima")
 
 
 				//moveCamera(-1)
@@ -639,12 +639,12 @@ function criaObjetoChao(modelo, px, py, onDone) {
 				gltf.scene.userData.centroEsquerda = cubeEscolhido.userData.centroEsquerda
 				gltf.scene.userData.centro = cubeEscolhido.userData.centro
 
-				let cubeRemover = scene.getObjectById(ids[indexEscolhido]);
+				let cubeRemover = scene.getObjectById(state.groundIds[state.selectedIndex]);
 
 				scene.remove(cubeRemover)
-				ids[indexEscolhido] = gltf.scene.id
+				state.groundIds[state.selectedIndex] = gltf.scene.id
 
-				let cubeEsquerda = ids[indexEscolhido - 1] ? scene.getObjectById(ids[indexEscolhido - 1]) : null
+				let cubeEsquerda = state.groundIds[state.selectedIndex - 1] ? scene.getObjectById(state.groundIds[state.selectedIndex - 1]) : null
 				if (cubeEsquerda && cubeEsquerda.name == "cubo") {
 					scene.remove(cubeEsquerda)
 				}
@@ -681,7 +681,7 @@ function criaObjetoCima(modelo, px, py, index, onDone) {
 			let cube1BB = new THREE.Box3(new THREE.Vector3(), new THREE.Vector3());
 			cube1BB.setFromObject(gltf.scene)
 			gltf.scene.box3 = cube1BB;
-			let cubeEscolhido = scene.getObjectById(uuidEscolhido);
+			let cubeEscolhido = scene.getObjectById(state.selectedObjectId);
 
 			handleCameraOnAdd(cubeEscolhido.position.x);
 			const tamanhox = cube1BB.max.x - cube1BB.min.x;
@@ -716,9 +716,9 @@ function criaObjetoCima(modelo, px, py, index, onDone) {
 			// direita
 			if (px > 0) {
 
-				let cubeDireita = idsCima[indexEscolhido + 1] ? scene.getObjectById(idsCima[indexEscolhido + 1]) : null;
+				let cubeDireita = state.topIds[state.selectedIndex + 1] ? scene.getObjectById(state.topIds[state.selectedIndex + 1]) : null;
 				gltf.scene.userData.centroDireita = true
-				cubeDireita ? idsCima[indexEscolhido + 1] = gltf.scene.id : idsCima.push(gltf.scene.id)
+				cubeDireita ? state.topIds[state.selectedIndex + 1] = gltf.scene.id : state.topIds.push(gltf.scene.id)
 				if (cubeDireita && cubeDireita.name == "cubo") {
 					scene.remove(cubeDireita)
 
@@ -732,8 +732,8 @@ function criaObjetoCima(modelo, px, py, index, onDone) {
 					fimy: gltf.scene.box3.max.y
 				}
 				cubeEscolhido.direita = { preenchido: true, id: gltf.scene.id };
-				if (!ids[indexEscolhido + 1]) {
-					// ids[indexEscolhido+1] = 0;
+				if (!state.groundIds[state.selectedIndex + 1]) {
+					// state.groundIds[state.selectedIndex+1] = 0;
 					criaCubo(true)
 
 				}
@@ -750,24 +750,24 @@ function criaObjetoCima(modelo, px, py, index, onDone) {
 					baixo: "",
 				}
 
-				botoes3d[indexEscolhido + 1] ? botoes3d[indexEscolhido + 1] = botoes3d[indexEscolhido + 1] : botoes3d.push(botao)
-				createButtonAdd(1, 0, scene.getObjectById(ids[indexEscolhido + 1]), indexEscolhido + 1, "chao")
-				createButtonAdd(-1, 0, scene.getObjectById(ids[indexEscolhido + 1]), indexEscolhido + 1, "chao")
-				createButtonAdd(0, 1, scene.getObjectById(ids[indexEscolhido + 1]), indexEscolhido + 1, "chao")
-				createButtonAdd(0, -1, scene.getObjectById(ids[indexEscolhido + 1]), indexEscolhido + 1, "chao")
+				state.groundButtons[state.selectedIndex + 1] ? state.groundButtons[state.selectedIndex + 1] = state.groundButtons[state.selectedIndex + 1] : state.groundButtons.push(botao)
+				createButtonAdd(1, 0, scene.getObjectById(state.groundIds[state.selectedIndex + 1]), state.selectedIndex + 1, "chao")
+				createButtonAdd(-1, 0, scene.getObjectById(state.groundIds[state.selectedIndex + 1]), state.selectedIndex + 1, "chao")
+				createButtonAdd(0, 1, scene.getObjectById(state.groundIds[state.selectedIndex + 1]), state.selectedIndex + 1, "chao")
+				createButtonAdd(0, -1, scene.getObjectById(state.groundIds[state.selectedIndex + 1]), state.selectedIndex + 1, "chao")
 
-				botoes3dCima[indexEscolhido + 1] ? botoes3dCima[indexEscolhido + 1] = botoes3dCima[indexEscolhido + 1] : botoes3dCima.push(botaoCima)
-				createButtonAdd(1, 0, scene.getObjectById(idsCima[indexEscolhido + 1]), indexEscolhido + 1, "cima")
-				createButtonAdd(-1, 0, scene.getObjectById(idsCima[indexEscolhido + 1]), indexEscolhido + 1, "cima")
-				createButtonAdd(0, 1, scene.getObjectById(idsCima[indexEscolhido + 1]), indexEscolhido + 1, "cima")
+				state.topButtons[state.selectedIndex + 1] ? state.topButtons[state.selectedIndex + 1] = state.topButtons[state.selectedIndex + 1] : state.topButtons.push(botaoCima)
+				createButtonAdd(1, 0, scene.getObjectById(state.topIds[state.selectedIndex + 1]), state.selectedIndex + 1, "cima")
+				createButtonAdd(-1, 0, scene.getObjectById(state.topIds[state.selectedIndex + 1]), state.selectedIndex + 1, "cima")
+				createButtonAdd(0, 1, scene.getObjectById(state.topIds[state.selectedIndex + 1]), state.selectedIndex + 1, "cima")
 
 			}
 			// esquerda
 			else if (px < 0) {
 				gltf.scene.userData.centroEsquerda = true
 
-				let cubeEsquerda = idsCima[indexEscolhido - 1] ? scene.getObjectById(idsCima[indexEscolhido - 1]) : null;
-				cubeEsquerda ? idsCima[indexEscolhido - 1] = gltf.scene.id : idsCima.unshift(gltf.scene.id)
+				let cubeEsquerda = state.topIds[state.selectedIndex - 1] ? scene.getObjectById(state.topIds[state.selectedIndex - 1]) : null;
+				cubeEsquerda ? state.topIds[state.selectedIndex - 1] = gltf.scene.id : state.topIds.unshift(gltf.scene.id)
 				if (cubeEsquerda && cubeEsquerda.name == "cubo") {
 					scene.remove(cubeEsquerda)
 
@@ -782,8 +782,8 @@ function criaObjetoCima(modelo, px, py, index, onDone) {
 					inicioy: gltf.scene.box3.min.y,
 					fimy: gltf.scene.box3.max.y
 				}
-				if (!ids[indexEscolhido - 1]) {
-					// ids[indexEscolhido+1] = 0;
+				if (!state.groundIds[state.selectedIndex - 1]) {
+					// state.groundIds[state.selectedIndex+1] = 0;
 					criaCubo(true)
 
 				}
@@ -802,16 +802,16 @@ function criaObjetoCima(modelo, px, py, index, onDone) {
 					index: 0
 				}
 
-				botoes3d[indexEscolhido - 1] ? botoes3d[indexEscolhido - 1] = botoes3d[indexEscolhido - 1] : botoes3d.unshift(botao)
-				createButtonAdd(1, 0, scene.getObjectById(ids[indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0]), indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0, "chao")
-				createButtonAdd(-1, 0, scene.getObjectById(ids[indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0]), indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0, "chao")
-				createButtonAdd(0, 1, scene.getObjectById(ids[indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0]), indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0, "chao")
-				createButtonAdd(0, -1, scene.getObjectById(ids[indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0]), indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0, "chao")
+				state.groundButtons[state.selectedIndex - 1] ? state.groundButtons[state.selectedIndex - 1] = state.groundButtons[state.selectedIndex - 1] : state.groundButtons.unshift(botao)
+				createButtonAdd(1, 0, scene.getObjectById(state.groundIds[state.selectedIndex - 1 >= 0 ? state.selectedIndex - 1 : 0]), state.selectedIndex - 1 >= 0 ? state.selectedIndex - 1 : 0, "chao")
+				createButtonAdd(-1, 0, scene.getObjectById(state.groundIds[state.selectedIndex - 1 >= 0 ? state.selectedIndex - 1 : 0]), state.selectedIndex - 1 >= 0 ? state.selectedIndex - 1 : 0, "chao")
+				createButtonAdd(0, 1, scene.getObjectById(state.groundIds[state.selectedIndex - 1 >= 0 ? state.selectedIndex - 1 : 0]), state.selectedIndex - 1 >= 0 ? state.selectedIndex - 1 : 0, "chao")
+				createButtonAdd(0, -1, scene.getObjectById(state.groundIds[state.selectedIndex - 1 >= 0 ? state.selectedIndex - 1 : 0]), state.selectedIndex - 1 >= 0 ? state.selectedIndex - 1 : 0, "chao")
 
-				botoes3dCima[indexEscolhido - 1] ? botoes3dCima[indexEscolhido - 1] = botoes3dCima[indexEscolhido - 1] : botoes3dCima.unshift(botaoCima)
-				createButtonAdd(1, 0, scene.getObjectById(idsCima[indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0]), indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0, "cima")
-				createButtonAdd(-1, 0, scene.getObjectById(idsCima[indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0]), indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0, "cima")
-				createButtonAdd(0, 1, scene.getObjectById(idsCima[indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0]), indexEscolhido - 1 >= 0 ? indexEscolhido - 1 : 0, "cima")
+				state.topButtons[state.selectedIndex - 1] ? state.topButtons[state.selectedIndex - 1] = state.topButtons[state.selectedIndex - 1] : state.topButtons.unshift(botaoCima)
+				createButtonAdd(1, 0, scene.getObjectById(state.topIds[state.selectedIndex - 1 >= 0 ? state.selectedIndex - 1 : 0]), state.selectedIndex - 1 >= 0 ? state.selectedIndex - 1 : 0, "cima")
+				createButtonAdd(-1, 0, scene.getObjectById(state.topIds[state.selectedIndex - 1 >= 0 ? state.selectedIndex - 1 : 0]), state.selectedIndex - 1 >= 0 ? state.selectedIndex - 1 : 0, "cima")
+				createButtonAdd(0, 1, scene.getObjectById(state.topIds[state.selectedIndex - 1 >= 0 ? state.selectedIndex - 1 : 0]), state.selectedIndex - 1 >= 0 ? state.selectedIndex - 1 : 0, "cima")
 			}
 			// cima
 			else if (py > 0) {
@@ -819,10 +819,10 @@ function criaObjetoCima(modelo, px, py, index, onDone) {
 				gltf.scene.userData.centroEsquerda = cubeEscolhido.userData.centroEsquerda
 				gltf.scene.userData.centro = cubeEscolhido.userData.centro
 
-				let cubeRemover = scene.getObjectById(idsCima[indexEscolhido]);
+				let cubeRemover = scene.getObjectById(state.topIds[state.selectedIndex]);
 
 				scene.remove(cubeRemover)
-				idsCima[indexEscolhido] = gltf.scene.id
+				state.topIds[state.selectedIndex] = gltf.scene.id
 				gltf.scene.position.setX(cubeEscolhido.position.x);
 
 				gltf.scene.userData.tamanho = {
@@ -857,7 +857,7 @@ function removerDaGravacao(obj, outroObj, posicaoRemovida) {
 	if (obj.name == "cubo") {
 		// Removeu clicando num espaço vazio: some a peça real que estava do outro lado, e a coluna inteira é reindexada
 		const idRemovido = outroObj.id;
-		montagemGravada = montagemGravada
+		state.assemblySteps = state.assemblySteps
 			.filter(function (passo) { return passo.id !== idRemovido; })
 			.map(function (passo) {
 				if (typeof passo.idx === 'number' && passo.idx > posicaoRemovida) {
@@ -867,37 +867,37 @@ function removerDaGravacao(obj, outroObj, posicaoRemovida) {
 			});
 	} else {
 		// Removeu a peça real: ela vira um espaço vazio, sem afetar os índices das demais
-		montagemGravada = montagemGravada.filter(function (passo) { return passo.id !== obj.id; });
+		state.assemblySteps = state.assemblySteps.filter(function (passo) { return passo.id !== obj.id; });
 	}
 }
 
 function remove() {
-	const obj = scene.getObjectById(uuidEscolhido);
+	const obj = scene.getObjectById(state.selectedObjectId);
 
-	let outroObj = obj.userData.modelo.tipo == "chao" ? scene.getObjectById(idsCima[indexEscolhido]) : scene.getObjectById(ids[indexEscolhido]);
+	let outroObj = obj.userData.modelo.tipo == "chao" ? scene.getObjectById(state.topIds[state.selectedIndex]) : scene.getObjectById(state.groundIds[state.selectedIndex]);
 
-	removerDaGravacao(obj, outroObj, indexEscolhido);
+	removerDaGravacao(obj, outroObj, state.selectedIndex);
 
-	for (let i = 0; i < botoes3d.length; i++) {
-		scene.getObjectById(botoes3d[i].direita).visible = false
-		scene.getObjectById(botoes3d[i].esquerda).visible = false
-		scene.getObjectById(botoes3d[i].cima).visible = false
-		scene.getObjectById(botoes3dCima[i].direita).visible = false
-		scene.getObjectById(botoes3dCima[i].esquerda).visible = false
-		scene.getObjectById(botoes3dCima[i].cima).visible = false
+	for (let i = 0; i < state.groundButtons.length; i++) {
+		scene.getObjectById(state.groundButtons[i].direita).visible = false
+		scene.getObjectById(state.groundButtons[i].esquerda).visible = false
+		scene.getObjectById(state.groundButtons[i].cima).visible = false
+		scene.getObjectById(state.topButtons[i].direita).visible = false
+		scene.getObjectById(state.topButtons[i].esquerda).visible = false
+		scene.getObjectById(state.topButtons[i].cima).visible = false
 
 	}
 
 	let botoesApagar = {
-		direita: botoes3d[indexEscolhido].direita,
-		esquerda: botoes3d[indexEscolhido].esquerda,
-		cima: botoes3d[indexEscolhido].cima,
+		direita: state.groundButtons[state.selectedIndex].direita,
+		esquerda: state.groundButtons[state.selectedIndex].esquerda,
+		cima: state.groundButtons[state.selectedIndex].cima,
 
 	}
 	let botoesApagarCima = {
-		direita: botoes3dCima[indexEscolhido].direita,
-		esquerda: botoes3dCima[indexEscolhido].esquerda,
-		cima: botoes3dCima[indexEscolhido].cima,
+		direita: state.topButtons[state.selectedIndex].direita,
+		esquerda: state.topButtons[state.selectedIndex].esquerda,
+		cima: state.topButtons[state.selectedIndex].cima,
 
 	}
 
@@ -905,8 +905,8 @@ function remove() {
 	if (obj.name == "cubo") {
 
 		let valorSubtrair = (obj.userData.tamanho.fimx - obj.userData.tamanho.iniciox) < 0 ? (obj.userData.tamanho.fimx - obj.userData.tamanho.iniciox) * -1 : (obj.userData.tamanho.fimx - obj.userData.tamanho.iniciox)
-		valorLargura = valorLargura - valorSubtrair
-		largura.innerText = "Largura: " + valorLargura.toFixed(2) + "m"
+		state.totalWidth = state.totalWidth - valorSubtrair
+		largura.innerText = "Largura: " + state.totalWidth.toFixed(2) + "m"
 		realocaModelo();
 
 
@@ -920,37 +920,37 @@ function remove() {
 		scene.remove(botoesApagarCima.cima)
 
 	} else {
-		if (ids[indexEscolhido] == idsCima[indexEscolhido]) criaCuboCima()
+		if (state.groundIds[state.selectedIndex] == state.topIds[state.selectedIndex]) criaCuboCima()
 		obj.userData.modelo.tipo == "chao" ? criaCubo() : criaCuboCima()
 
 		scene.remove(obj);
 	}
-	indexAntigo = null
-	if (ids.length == 0 && idsCima.length == 0) addButton.classList.remove('hide')
+	state.previousHoverIndex = null
+	if (state.groundIds.length == 0 && state.topIds.length == 0) addButton.classList.remove('hide')
 
 	atualizarModeloAR()
 }
 
 function realocaModelo() {
 
-	let cubeApagar = scene.getObjectById(ids[indexEscolhido]);
+	let cubeApagar = scene.getObjectById(state.groundIds[state.selectedIndex]);
 	let tamanhoApagar = cubeApagar.userData.tamanho.fimx - cubeApagar.userData.tamanho.iniciox
 
 	if (cubeApagar.userData.centroEsquerda) {
-		for (let i = indexEscolhido; i >= 0; i--) {
-			let cubeAtual = scene.getObjectById(ids[i]);
-			let cubeAtualCima = scene.getObjectById(idsCima[i]);
+		for (let i = state.selectedIndex; i >= 0; i--) {
+			let cubeAtual = scene.getObjectById(state.groundIds[i]);
+			let cubeAtualCima = scene.getObjectById(state.topIds[i]);
 			if (i - 1 >= 0) {
-				let cubeDireita = scene.getObjectById(ids[i + 1]);
-				let cubeEsquerda = scene.getObjectById(ids[i - 1]);
-				let cubeDireitaCima = scene.getObjectById(idsCima[i + 1]);
-				let cubeEsquerdaCima = scene.getObjectById(idsCima[i - 1]);
-				let cubeDireitaBotao = scene.getObjectById(botoes3d[i - 1].direita);
-				let cubeEsquerdaBotao = scene.getObjectById(botoes3d[i - 1].esquerda);
-				let cubeCimaBotao = scene.getObjectById(botoes3d[i - 1].cima);
-				let cubeDireitaCimaBotao = scene.getObjectById(botoes3dCima[i - 1].direita);
-				let cubeEsquerdaCimaBotao = scene.getObjectById(botoes3dCima[i - 1].esquerda);
-				let cubeCimaCimaBotao = scene.getObjectById(botoes3dCima[i - 1].cima);
+				let cubeDireita = scene.getObjectById(state.groundIds[i + 1]);
+				let cubeEsquerda = scene.getObjectById(state.groundIds[i - 1]);
+				let cubeDireitaCima = scene.getObjectById(state.topIds[i + 1]);
+				let cubeEsquerdaCima = scene.getObjectById(state.topIds[i - 1]);
+				let cubeDireitaBotao = scene.getObjectById(state.groundButtons[i - 1].direita);
+				let cubeEsquerdaBotao = scene.getObjectById(state.groundButtons[i - 1].esquerda);
+				let cubeCimaBotao = scene.getObjectById(state.groundButtons[i - 1].cima);
+				let cubeDireitaCimaBotao = scene.getObjectById(state.topButtons[i - 1].direita);
+				let cubeEsquerdaCimaBotao = scene.getObjectById(state.topButtons[i - 1].esquerda);
+				let cubeCimaCimaBotao = scene.getObjectById(state.topButtons[i - 1].cima);
 				let tamanho = cubeAtual.userData.tamanho.fimx - cubeAtual.userData.tamanho.iniciox;
 				let tamanhoCima = cubeAtualCima.userData.tamanho.fimx - cubeAtualCima.userData.tamanho.iniciox;
 				cubeEsquerda.userData.tamanho.fimx = cubeEsquerda.userData.tamanho.fimx - tamanho;
@@ -973,26 +973,26 @@ function realocaModelo() {
 				cubeEsquerdaCimaBotao.position.x = cubeEsquerdaCimaBotao.position.x - tamanhoApagar
 				cubeCimaCimaBotao.position.x = cubeCimaCimaBotao.position.x - tamanhoApagar
 			} else {
-				let cubeEsquerda = scene.getObjectById(ids[i]);
-				let cubeEsquerdaCima = scene.getObjectById(idsCima[i]);
+				let cubeEsquerda = scene.getObjectById(state.groundIds[i]);
+				let cubeEsquerdaCima = scene.getObjectById(state.topIds[i]);
 				cubeEsquerda.userData.esquerda = cubeAtual.userData.esquerda;
 				cubeEsquerdaCima.userData.esquerda = cubeAtualCima.userData.esquerda;
 			}
 		}
 	}
 	else {
-		for (let i = indexEscolhido; i < ids.length; i++) {
-			let cubeAtual = scene.getObjectById(ids[i]);
-			let cubeAtualCima = scene.getObjectById(idsCima[i]);
-			if (i + 1 < ids.length && i - 1 > 0) {
-				let cubeDireita = scene.getObjectById(ids[i + 1]);
-				let cubeDireitaCima = scene.getObjectById(idsCima[i + 1]);
-				let cubeDireitaBotao = scene.getObjectById(botoes3d[i + 1].direita);
-				let cubeEsquerdaBotao = scene.getObjectById(botoes3d[i + 1].esquerda);
-				let cubeCimaBotao = scene.getObjectById(botoes3d[i + 1].cima);
-				let cubeDireitaCimaBotao = scene.getObjectById(botoes3dCima[i + 1].direita);
-				let cubeEsquerdaCimaBotao = scene.getObjectById(botoes3dCima[i + 1].esquerda);
-				let cubeCimaCimaBotao = scene.getObjectById(botoes3dCima[i + 1].cima);
+		for (let i = state.selectedIndex; i < state.groundIds.length; i++) {
+			let cubeAtual = scene.getObjectById(state.groundIds[i]);
+			let cubeAtualCima = scene.getObjectById(state.topIds[i]);
+			if (i + 1 < state.groundIds.length && i - 1 > 0) {
+				let cubeDireita = scene.getObjectById(state.groundIds[i + 1]);
+				let cubeDireitaCima = scene.getObjectById(state.topIds[i + 1]);
+				let cubeDireitaBotao = scene.getObjectById(state.groundButtons[i + 1].direita);
+				let cubeEsquerdaBotao = scene.getObjectById(state.groundButtons[i + 1].esquerda);
+				let cubeCimaBotao = scene.getObjectById(state.groundButtons[i + 1].cima);
+				let cubeDireitaCimaBotao = scene.getObjectById(state.topButtons[i + 1].direita);
+				let cubeEsquerdaCimaBotao = scene.getObjectById(state.topButtons[i + 1].esquerda);
+				let cubeCimaCimaBotao = scene.getObjectById(state.topButtons[i + 1].cima);
 				let tamanho = cubeAtual.userData.tamanho.fimx - cubeAtual.userData.tamanho.iniciox;
 				let tamanhoCima = cubeAtualCima.userData.tamanho.fimx - cubeAtualCima.userData.tamanho.iniciox;
 				cubeDireita.userData.tamanho.iniciox = cubeDireita.userData.tamanho.iniciox - tamanho;
@@ -1016,16 +1016,16 @@ function realocaModelo() {
 
 			else if (i - 1 > 0) {
 
-				let cubeEsquerda = scene.getObjectById(ids[i - 1]);
-				let cubeEsquerdaCima = scene.getObjectById(idsCima[i - 1]);
+				let cubeEsquerda = scene.getObjectById(state.groundIds[i - 1]);
+				let cubeEsquerdaCima = scene.getObjectById(state.topIds[i - 1]);
 				cubeEsquerda.userData.direita = cubeAtual.userData.direita;
 				cubeEsquerdaCima.userData.direita = cubeAtualCima.userData.direita;
 
 			}
-			else if (i + 1 < ids.length) {
+			else if (i + 1 < state.groundIds.length) {
 
-				let cubeDireita = scene.getObjectById(ids[i + 1]);
-				let cubeDireitaCima = scene.getObjectById(idsCima[i + 1]);
+				let cubeDireita = scene.getObjectById(state.groundIds[i + 1]);
+				let cubeDireitaCima = scene.getObjectById(state.topIds[i + 1]);
 				let tamanho = cubeAtual.userData.tamanho.fimx - cubeAtual.userData.tamanho.iniciox;
 				cubeDireita.userData.tamanho.iniciox = cubeDireita.userData.tamanho.iniciox - tamanho;
 				cubeDireita.userData.tamanho.fimx = cubeDireita.userData.tamanho.fimx - tamanho;
@@ -1044,21 +1044,21 @@ function realocaModelo() {
 		}
 	}
 
-	ids.splice(indexEscolhido, 1);
-	idsCima.splice(indexEscolhido, 1);
-	botoes3d.splice(indexEscolhido, 1);
-	botoes3dCima.splice(indexEscolhido, 1);
+	state.groundIds.splice(state.selectedIndex, 1);
+	state.topIds.splice(state.selectedIndex, 1);
+	state.groundButtons.splice(state.selectedIndex, 1);
+	state.topButtons.splice(state.selectedIndex, 1);
 }
 
 function criaCubo(embaixo = false, nome = "cubo") {
-	corEscolhida = "#000000";
+	state.selectedColor = "#000000";
 
-	const material = new THREE.MeshBasicMaterial({ color: corEscolhida, transparent: true, opacity: 0 });
+	const material = new THREE.MeshBasicMaterial({ color: state.selectedColor, transparent: true, opacity: 0 });
 
-	let cubeEscolhido = idsCima.length == 1 ? scene.getObjectById(idsCima[0]) : scene.getObjectById(idsCima[indexEscolhido]);
+	let cubeEscolhido = state.topIds.length == 1 ? scene.getObjectById(state.topIds[0]) : scene.getObjectById(state.topIds[state.selectedIndex]);
 	let cubeCima;
-	if (ladoEscolhido == "esquerda") cubeCima = idsCima.length == 1 ? scene.getObjectById(idsCima[0]) : scene.getObjectById(idsCima[indexEscolhido]);
-	else cubeCima = idsCima.length == 1 ? scene.getObjectById(idsCima[0]) : scene.getObjectById(idsCima[indexEscolhido + 1]);
+	if (state.selectedSide == "esquerda") cubeCima = state.topIds.length == 1 ? scene.getObjectById(state.topIds[0]) : scene.getObjectById(state.topIds[state.selectedIndex]);
+	else cubeCima = state.topIds.length == 1 ? scene.getObjectById(state.topIds[0]) : scene.getObjectById(state.topIds[state.selectedIndex + 1]);
 	// Sem vizinho à direita (ex: removendo o item da ponta), usa o próprio item como referência
 	if (!cubeCima) cubeCima = cubeEscolhido;
 
@@ -1092,9 +1092,9 @@ function criaCubo(embaixo = false, nome = "cubo") {
 		esquerda: cubeEscolhido.userData.esquerda
 
 	}
-	embaixo ? (ladoEscolhido == "esquerda" && indexEscolhido == 0 ? ids.unshift(cube.id) : ids.push(cube.id)) : ids[indexEscolhido] = cube.id;
+	embaixo ? (state.selectedSide == "esquerda" && state.selectedIndex == 0 ? state.groundIds.unshift(cube.id) : state.groundIds.push(cube.id)) : state.groundIds[state.selectedIndex] = cube.id;
 
-	if (ladoEscolhido == "direita") {
+	if (state.selectedSide == "direita") {
 		embaixo ? cube.position.setX(cubeCima.position.x) : cube.position.setX(cubeEscolhido.position.x);
 	}
 	else {
@@ -1105,15 +1105,15 @@ function criaCubo(embaixo = false, nome = "cubo") {
 }
 function criaCuboCima(emcima = false, nome = "cubo") {
 
-	corEscolhida = "#000000";
+	state.selectedColor = "#000000";
 
 
-	const material = new THREE.MeshBasicMaterial({ color: corEscolhida, transparent: true, opacity: 0 });
+	const material = new THREE.MeshBasicMaterial({ color: state.selectedColor, transparent: true, opacity: 0 });
 
 
-	let cubeEscolhido = ids.length == 1 ? scene.getObjectById(ids[0]) : scene.getObjectById(ids[indexEscolhido])
+	let cubeEscolhido = state.groundIds.length == 1 ? scene.getObjectById(state.groundIds[0]) : scene.getObjectById(state.groundIds[state.selectedIndex])
 
-	let cubeBaixo = ids.length == 1 ? scene.getObjectById(ids[0]) : scene.getObjectById(ids[indexEscolhido + 1]);
+	let cubeBaixo = state.groundIds.length == 1 ? scene.getObjectById(state.groundIds[0]) : scene.getObjectById(state.groundIds[state.selectedIndex + 1]);
 	// Sem vizinho à direita (ex: removendo o item da ponta), usa o próprio item como referência
 	if (!cubeBaixo) cubeBaixo = cubeEscolhido;
 
@@ -1149,9 +1149,9 @@ function criaCuboCima(emcima = false, nome = "cubo") {
 
 	}
 
-	emcima ? (ladoEscolhido == "esquerda" && indexEscolhido == 0 ? idsCima.unshift(cube.id) : idsCima.push(cube.id)) : idsCima[indexEscolhido] = cube.id;
+	emcima ? (state.selectedSide == "esquerda" && state.selectedIndex == 0 ? state.topIds.unshift(cube.id) : state.topIds.push(cube.id)) : state.topIds[state.selectedIndex] = cube.id;
 
-	if (ladoEscolhido == "direita") {
+	if (state.selectedSide == "direita") {
 		emcima ? cube.position.setX(cubeBaixo.position.x) : cube.position.setX(cubeEscolhido.position.x);
 	}
 	else {
@@ -1180,23 +1180,23 @@ window.addEventListener('click', function () {
 	if (intersects.length > 0) {
 		menuDiv.classList.add("label");
 		const position = intersects[0].object.position;
-		uuidEscolhido = intersects[0].object.name == "cubo" ? intersects[0].object.id : intersects[0].object.parent.id;
+		state.selectedObjectId = intersects[0].object.name == "cubo" ? intersects[0].object.id : intersects[0].object.parent.id;
 
-		let cubeEscolhido = scene.getObjectById(uuidEscolhido);
+		let cubeEscolhido = scene.getObjectById(state.selectedObjectId);
 
 		if (!cubeEscolhido.userData.tamanho) {
 
-			uuidEscolhido = intersects[0].object.parent.parent.id;
-			cubeEscolhido = scene.getObjectById(uuidEscolhido);
+			state.selectedObjectId = intersects[0].object.parent.parent.id;
+			cubeEscolhido = scene.getObjectById(state.selectedObjectId);
 		}
 
 		removeButton.classList.add('hide')
-		indexEscolhido = cubeEscolhido.userData.modelo.tipo == "chao" ? ids.indexOf(uuidEscolhido) : idsCima.indexOf(uuidEscolhido)
+		state.selectedIndex = cubeEscolhido.userData.modelo.tipo == "chao" ? state.groundIds.indexOf(state.selectedObjectId) : state.topIds.indexOf(state.selectedObjectId)
 
-		let listaContraria = cubeEscolhido.userData.modelo.tipo == "chao" ? idsCima : ids
+		let listaContraria = cubeEscolhido.userData.modelo.tipo == "chao" ? state.topIds : state.groundIds
 		if (cubeEscolhido.name == "cubo") {
 			removeButton.classList.add('hide')
-			if (scene.getObjectById(listaContraria[indexEscolhido]).name == "cubo") {
+			if (scene.getObjectById(listaContraria[state.selectedIndex]).name == "cubo") {
 				removeButton.classList.remove('hide')
 				btnRemove.position.setY(cubeEscolhido.userData.modelo.tipo == "chao" ? cubeEscolhido.position.y - 0.5 : cubeEscolhido.position.y + 0.5)
 				btnRemove.position.setX(cubeEscolhido.position.x)
@@ -1219,19 +1219,19 @@ function onPointerMove(event) {
 	if (intersects.length > 0) {
 		document.body.style.cursor = 'pointer'
 		const position = intersects[0].object.position;
-		uuidEscolhidoTemporario = intersects[0].object.parent.id;
-		let cubeEscolhido = scene.getObjectById(uuidEscolhidoTemporario);
+		state.hoveredObjectId = intersects[0].object.parent.id;
+		let cubeEscolhido = scene.getObjectById(state.hoveredObjectId);
 
 		if (intersects[0].object.name != "cubo" && intersects[0].object.name != "botao") {
-			if (!indexAntigo || indexAntigo != uuidEscolhidoTemporario) {
-				if (indexAntigo) {
+			if (!state.previousHoverIndex || state.previousHoverIndex != state.hoveredObjectId) {
+				if (state.previousHoverIndex) {
 
 
-					let cubeEscolhido = scene.getObjectById(indexAntigo);
+					let cubeEscolhido = scene.getObjectById(state.previousHoverIndex);
 					cubeEscolhido.children[cubeEscolhido.children.length > 1 ? 1 : 0].material.opacity = 1
 					cubeEscolhido.children[cubeEscolhido.children.length > 1 ? 1 : 0].material.transparent = true
 				}
-				indexAntigo = uuidEscolhidoTemporario
+				state.previousHoverIndex = state.hoveredObjectId
 			}
 			cubeEscolhido.children[cubeEscolhido.children.length > 1 ? 1 : 0].material.opacity = 0.5
 			cubeEscolhido.children[cubeEscolhido.children.length > 1 ? 1 : 0].material.transparent = true
@@ -1239,8 +1239,8 @@ function onPointerMove(event) {
 	}
 	else {
 		document.body.style.cursor = 'auto'
-		if (indexAntigo) {
-			let cubeEscolhido = scene.getObjectById(indexAntigo);
+		if (state.previousHoverIndex) {
+			let cubeEscolhido = scene.getObjectById(state.previousHoverIndex);
 
 			if (cubeEscolhido.name != "cubo" && cubeEscolhido != "botao") {
 
@@ -1261,10 +1261,10 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 
 
 		addButtonDireita.addEventListener('pointerdown', function (event) {
-			xEscolhido = 1;
-			yEscolhido = 0
-			adicionaCubo = true;
-			ladoEscolhido = "direita"
+			state.selectedDirectionX = 1;
+			state.selectedDirectionY = 0
+			state.isAddingModule = true;
+			state.selectedSide = "direita"
 
 			pointer.x = (event.clientX / tamanhoScene) * 2 - 1;
 			pointer.y = - (event.clientY / window.innerHeight) * 2 + 1;
@@ -1274,47 +1274,47 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 			if (intersects.length > 0) {
 				menuDiv.classList.add("label");
 				const position = intersects[0].object.position;
-				uuidEscolhido = intersects[0].object.name == "cubo" ? intersects[0].object.id : intersects[0].object.parent.id;
+				state.selectedObjectId = intersects[0].object.name == "cubo" ? intersects[0].object.id : intersects[0].object.parent.id;
 
-				let cubeEscolhido = scene.getObjectById(uuidEscolhido);
+				let cubeEscolhido = scene.getObjectById(state.selectedObjectId);
 
 
 				if (!cubeEscolhido.userData.tamanho) {
 
-					uuidEscolhido = intersects[0].object.parent.parent.id;
-					cubeEscolhido = scene.getObjectById(uuidEscolhido);
+					state.selectedObjectId = intersects[0].object.parent.parent.id;
+					cubeEscolhido = scene.getObjectById(state.selectedObjectId);
 				}
 
-				indexEscolhido = tipo == "chao" ? ids.indexOf(uuidEscolhido) : idsCima.indexOf(uuidEscolhido);
+				state.selectedIndex = tipo == "chao" ? state.groundIds.indexOf(state.selectedObjectId) : state.topIds.indexOf(state.selectedObjectId);
 			}
 			else {
 
-				for (let k = 0; k < botoes3d.length; k++) {
+				for (let k = 0; k < state.groundButtons.length; k++) {
 
-					if (botoes3dCima[k].direita == window['btnDireita'].id) {
-						indexEscolhido = k
+					if (state.topButtons[k].direita == window['btnDireita'].id) {
+						state.selectedIndex = k
 
-						uuidEscolhido = tipo == "chao" ? ids[indexEscolhido] : idsCima[indexEscolhido]
+						state.selectedObjectId = tipo == "chao" ? state.groundIds[state.selectedIndex] : state.topIds[state.selectedIndex]
 					}
-					if (botoes3d[k].direita == window['btnDireita'].id) {
-						indexEscolhido = k
+					if (state.groundButtons[k].direita == window['btnDireita'].id) {
+						state.selectedIndex = k
 
-						uuidEscolhido = tipo == "chao" ? ids[indexEscolhido] : idsCima[indexEscolhido]
+						state.selectedObjectId = tipo == "chao" ? state.groundIds[state.selectedIndex] : state.topIds[state.selectedIndex]
 					}
 
 				}
 
 			}
 			{
-				const passoGravado = { fn: tipo == "chao" ? 'c' : 't', k: modeloEscolhido.chave, px: xEscolhido, py: yEscolhido, idx: indexEscolhido }
-				const aoConcluir = function (id) { passoGravado.id = id; montagemGravada.push(passoGravado); atualizarModeloAR() }
-				tipo == "chao" ? criaObjetoChao(modeloEscolhido, xEscolhido, yEscolhido, aoConcluir) : criaObjetoCima(modeloEscolhido, xEscolhido, yEscolhido, indexEscolhido, aoConcluir)
+				const passoGravado = { fn: tipo == "chao" ? 'c' : 't', k: state.selectedModel.chave, px: state.selectedDirectionX, py: state.selectedDirectionY, idx: state.selectedIndex }
+				const aoConcluir = function (id) { passoGravado.id = id; state.assemblySteps.push(passoGravado); atualizarModeloAR() }
+				tipo == "chao" ? criaObjetoChao(state.selectedModel, state.selectedDirectionX, state.selectedDirectionY, aoConcluir) : criaObjetoCima(state.selectedModel, state.selectedDirectionX, state.selectedDirectionY, state.selectedIndex, aoConcluir)
 			}
-			for (let j = 0; j < (tipo == "chao" ? botoes3d.length : botoes3dCima.length); j++) {
-				const botaoDireita = scene.getObjectById(tipo == "chao" ? botoes3d[j].direita : botoes3dCima[j].direita);
-				const botaoEsquerda = scene.getObjectById(tipo == "chao" ? botoes3d[j].esquerda : botoes3dCima[j].esquerda);
-				const botaoCima = scene.getObjectById(botoes3d[j].cima);
-				const botaoBaixo = scene.getObjectById(botoes3d[j].baixo);
+			for (let j = 0; j < (tipo == "chao" ? state.groundButtons.length : state.topButtons.length); j++) {
+				const botaoDireita = scene.getObjectById(tipo == "chao" ? state.groundButtons[j].direita : state.topButtons[j].direita);
+				const botaoEsquerda = scene.getObjectById(tipo == "chao" ? state.groundButtons[j].esquerda : state.topButtons[j].esquerda);
+				const botaoCima = scene.getObjectById(state.groundButtons[j].cima);
+				const botaoBaixo = scene.getObjectById(state.groundButtons[j].baixo);
 
 				botaoDireita.visible = false
 				botaoEsquerda.visible = false
@@ -1342,7 +1342,7 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 		}
 
 
-		tipo == "chao" ? botoes3d[i].direita = window['btnDireita'].id : botoes3dCima[i].direita = window['btnDireita'].id;
+		tipo == "chao" ? state.groundButtons[i].direita = window['btnDireita'].id : state.topButtons[i].direita = window['btnDireita'].id;
 		scene.add(window['btnDireita']);
 
 	}
@@ -1352,10 +1352,10 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 
 		const btnAddEsquerda = new CSS3DObject(addButtonEsquerda);
 		addButtonEsquerda.addEventListener('pointerdown', function (event) {
-			xEscolhido = -1;
-			yEscolhido = 0
-			adicionaCubo = true;
-			ladoEscolhido = "esquerda"
+			state.selectedDirectionX = -1;
+			state.selectedDirectionY = 0
+			state.isAddingModule = true;
+			state.selectedSide = "esquerda"
 
 			pointer.x = (event.clientX / tamanhoScene) * 2 - 1;
 			pointer.y = - (event.clientY / window.innerHeight) * 2 + 1;
@@ -1365,48 +1365,48 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 			if (intersects.length > 0) {
 				menuDiv.classList.add("label");
 				const position = intersects[0].object.position;
-				uuidEscolhido = intersects[0].object.name == "cubo" ? intersects[0].object.id : intersects[0].object.parent.id;
+				state.selectedObjectId = intersects[0].object.name == "cubo" ? intersects[0].object.id : intersects[0].object.parent.id;
 
-				let cubeEscolhido = scene.getObjectById(uuidEscolhido);
+				let cubeEscolhido = scene.getObjectById(state.selectedObjectId);
 
 
 				if (!cubeEscolhido.userData.tamanho) {
 
-					uuidEscolhido = intersects[0].object.parent.parent.id;
-					cubeEscolhido = scene.getObjectById(uuidEscolhido);
+					state.selectedObjectId = intersects[0].object.parent.parent.id;
+					cubeEscolhido = scene.getObjectById(state.selectedObjectId);
 				}
 
-				indexEscolhido = tipo == "chao" ? ids.indexOf(uuidEscolhido) : idsCima.indexOf(uuidEscolhido);
+				state.selectedIndex = tipo == "chao" ? state.groundIds.indexOf(state.selectedObjectId) : state.topIds.indexOf(state.selectedObjectId);
 
 			}
 			else {
 
-				for (let k = 0; k < botoes3d.length; k++) {
+				for (let k = 0; k < state.groundButtons.length; k++) {
 
-					if (botoes3dCima[k].esquerda == btnAddEsquerda.id) {
-						indexEscolhido = k
+					if (state.topButtons[k].esquerda == btnAddEsquerda.id) {
+						state.selectedIndex = k
 
-						uuidEscolhido = tipo == "chao" ? ids[indexEscolhido] : idsCima[indexEscolhido]
+						state.selectedObjectId = tipo == "chao" ? state.groundIds[state.selectedIndex] : state.topIds[state.selectedIndex]
 					}
-					if (botoes3d[k].esquerda == btnAddEsquerda.id) {
-						indexEscolhido = k
+					if (state.groundButtons[k].esquerda == btnAddEsquerda.id) {
+						state.selectedIndex = k
 
-						uuidEscolhido = tipo == "chao" ? ids[indexEscolhido] : idsCima[indexEscolhido]
+						state.selectedObjectId = tipo == "chao" ? state.groundIds[state.selectedIndex] : state.topIds[state.selectedIndex]
 					}
 
 				}
 
 			}
 			{
-				const passoGravado = { fn: tipo == "chao" ? 'c' : 't', k: modeloEscolhido.chave, px: xEscolhido, py: yEscolhido, idx: indexEscolhido }
-				const aoConcluir = function (id) { passoGravado.id = id; montagemGravada.push(passoGravado); atualizarModeloAR() }
-				tipo == "chao" ? criaObjetoChao(modeloEscolhido, xEscolhido, yEscolhido, aoConcluir) : criaObjetoCima(modeloEscolhido, xEscolhido, yEscolhido, indexEscolhido, aoConcluir)
+				const passoGravado = { fn: tipo == "chao" ? 'c' : 't', k: state.selectedModel.chave, px: state.selectedDirectionX, py: state.selectedDirectionY, idx: state.selectedIndex }
+				const aoConcluir = function (id) { passoGravado.id = id; state.assemblySteps.push(passoGravado); atualizarModeloAR() }
+				tipo == "chao" ? criaObjetoChao(state.selectedModel, state.selectedDirectionX, state.selectedDirectionY, aoConcluir) : criaObjetoCima(state.selectedModel, state.selectedDirectionX, state.selectedDirectionY, state.selectedIndex, aoConcluir)
 			}
-			for (let j = 0; j < (tipo == "chao" ? botoes3d.length : botoes3dCima.length); j++) {
-				const botaoDireita = scene.getObjectById(tipo == "chao" ? botoes3d[j].direita : botoes3dCima[j].direita);
-				const botaoEsquerda = scene.getObjectById(tipo == "chao" ? botoes3d[j].esquerda : botoes3dCima[j].esquerda);
-				const botaoCima = scene.getObjectById(botoes3d[j].cima);
-				const botaoBaixo = scene.getObjectById(botoes3d[j].baixo);
+			for (let j = 0; j < (tipo == "chao" ? state.groundButtons.length : state.topButtons.length); j++) {
+				const botaoDireita = scene.getObjectById(tipo == "chao" ? state.groundButtons[j].direita : state.topButtons[j].direita);
+				const botaoEsquerda = scene.getObjectById(tipo == "chao" ? state.groundButtons[j].esquerda : state.topButtons[j].esquerda);
+				const botaoCima = scene.getObjectById(state.groundButtons[j].cima);
+				const botaoBaixo = scene.getObjectById(state.groundButtons[j].baixo);
 
 				botaoDireita.visible = false
 				botaoEsquerda.visible = false
@@ -1430,7 +1430,7 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 			btnAddEsquerda.position.setX(tipo == "chao" ? cubinho.position.x - 0.25 : cubinho.position.x - 0.1)
 			btnAddEsquerda.position.setY(cubinho.userData.modelo.tipo == "chao" ? cubinho.position.y + 0.5 : cubinho.position.y + 1.6)
 		}
-		tipo == "chao" ? botoes3d[i].esquerda = btnAddEsquerda.id : botoes3dCima[i].esquerda = btnAddEsquerda.id;
+		tipo == "chao" ? state.groundButtons[i].esquerda = btnAddEsquerda.id : state.topButtons[i].esquerda = btnAddEsquerda.id;
 
 		scene.add(btnAddEsquerda);
 	}
@@ -1442,10 +1442,10 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 
 		addButtonCima.addEventListener('pointerdown', function (event) {
 
-			xEscolhido = 0;
-			yEscolhido = 1;
-			adicionaCubo = true;
-			ladoEscolhido = "cima";
+			state.selectedDirectionX = 0;
+			state.selectedDirectionY = 1;
+			state.isAddingModule = true;
+			state.selectedSide = "cima";
 
 			pointer.x = (event.clientX / tamanhoScene) * 2 - 1;
 			pointer.y = - (event.clientY / window.innerHeight) * 2 + 1;
@@ -1455,34 +1455,34 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 			if (intersects.length > 0) {
 				menuDiv.classList.add("label");
 				const position = intersects[0].object.position;
-				uuidEscolhido = intersects[0].object.name == "cubo" ? intersects[0].object.id : intersects[0].object.parent.id;
+				state.selectedObjectId = intersects[0].object.name == "cubo" ? intersects[0].object.id : intersects[0].object.parent.id;
 
-				let cubeEscolhido = scene.getObjectById(uuidEscolhido);
+				let cubeEscolhido = scene.getObjectById(state.selectedObjectId);
 
 
 				if (!cubeEscolhido.userData.tamanho) {
 
-					uuidEscolhido = intersects[0].object.parent.parent.id;
-					cubeEscolhido = scene.getObjectById(uuidEscolhido);
+					state.selectedObjectId = intersects[0].object.parent.parent.id;
+					cubeEscolhido = scene.getObjectById(state.selectedObjectId);
 				}
 
-				indexEscolhido = cubeEscolhido.userData.modelo.tipo == "chao" ? ids.indexOf(uuidEscolhido) : idsCima.indexOf(uuidEscolhido);
+				state.selectedIndex = cubeEscolhido.userData.modelo.tipo == "chao" ? state.groundIds.indexOf(state.selectedObjectId) : state.topIds.indexOf(state.selectedObjectId);
 
 			}
 
 			{
-				const passoGravado = { fn: 't', k: modeloEscolhido.chave, px: xEscolhido, py: yEscolhido, idx: indexEscolhido }
-				criaObjetoCima(modeloEscolhido, xEscolhido, yEscolhido, indexEscolhido, function (id) {
+				const passoGravado = { fn: 't', k: state.selectedModel.chave, px: state.selectedDirectionX, py: state.selectedDirectionY, idx: state.selectedIndex }
+				criaObjetoCima(state.selectedModel, state.selectedDirectionX, state.selectedDirectionY, state.selectedIndex, function (id) {
 					passoGravado.id = id
-					montagemGravada.push(passoGravado)
+					state.assemblySteps.push(passoGravado)
 					atualizarModeloAR()
 				})
 			}
-			for (let j = 0; j < (tipo == "chao" ? botoes3d.length : botoes3dCima.length); j++) {
-				const botaoDireita = scene.getObjectById(tipo == "chao" ? botoes3d[j].direita : botoes3dCima[j].direita);
-				const botaoEsquerda = scene.getObjectById(tipo == "chao" ? botoes3d[j].esquerda : botoes3dCima[j].esquerda);
-				const botaoCima = scene.getObjectById(botoes3d[j].cima);
-				const botaoBaixo = scene.getObjectById(botoes3d[j].baixo);
+			for (let j = 0; j < (tipo == "chao" ? state.groundButtons.length : state.topButtons.length); j++) {
+				const botaoDireita = scene.getObjectById(tipo == "chao" ? state.groundButtons[j].direita : state.topButtons[j].direita);
+				const botaoEsquerda = scene.getObjectById(tipo == "chao" ? state.groundButtons[j].esquerda : state.topButtons[j].esquerda);
+				const botaoCima = scene.getObjectById(state.groundButtons[j].cima);
+				const botaoBaixo = scene.getObjectById(state.groundButtons[j].baixo);
 
 				botaoDireita.visible = false
 				botaoEsquerda.visible = false
@@ -1508,7 +1508,7 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 			btnAddCima.position.setY(cubinho.position.y + 0.75)
 
 		}
-		tipo == "chao" ? botoes3d[i].cima = btnAddCima.id : botoes3dCima[i].cima = btnAddCima.id;
+		tipo == "chao" ? state.groundButtons[i].cima = btnAddCima.id : state.topButtons[i].cima = btnAddCima.id;
 		scene.add(btnAddCima);
 	}
 	else if (y == -1) {
@@ -1519,10 +1519,10 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 
 		addButtonBaixoPos.addEventListener('pointerdown', function (event) {
 
-			xEscolhido = 0;
-			yEscolhido = -1;
-			adicionaCubo = true;
-			ladoEscolhido = "baixo";
+			state.selectedDirectionX = 0;
+			state.selectedDirectionY = -1;
+			state.isAddingModule = true;
+			state.selectedSide = "baixo";
 
 			pointer.x = (event.clientX / tamanhoScene) * 2 - 1;
 			pointer.y = - (event.clientY / window.innerHeight) * 2 + 1;
@@ -1532,34 +1532,34 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 			if (intersects.length > 0) {
 				menuDiv.classList.add("label");
 				const position = intersects[0].object.position;
-				uuidEscolhido = intersects[0].object.name == "cubo" ? intersects[0].object.id : intersects[0].object.parent.id;
+				state.selectedObjectId = intersects[0].object.name == "cubo" ? intersects[0].object.id : intersects[0].object.parent.id;
 
-				let cubeEscolhido = scene.getObjectById(uuidEscolhido);
+				let cubeEscolhido = scene.getObjectById(state.selectedObjectId);
 
 
 				if (!cubeEscolhido.userData.tamanho) {
 
-					uuidEscolhido = intersects[0].object.parent.parent.id;
-					cubeEscolhido = scene.getObjectById(uuidEscolhido);
+					state.selectedObjectId = intersects[0].object.parent.parent.id;
+					cubeEscolhido = scene.getObjectById(state.selectedObjectId);
 				}
 
-				indexEscolhido = cubeEscolhido.userData.modelo.tipo == "chao" ? ids.indexOf(uuidEscolhido) : idsCima.indexOf(uuidEscolhido);
+				state.selectedIndex = cubeEscolhido.userData.modelo.tipo == "chao" ? state.groundIds.indexOf(state.selectedObjectId) : state.topIds.indexOf(state.selectedObjectId);
 
 			}
 
 			{
-				const passoGravado = { fn: 'c', k: modeloEscolhido.chave, px: xEscolhido, py: yEscolhido, idx: indexEscolhido }
-				criaObjetoChao(modeloEscolhido, xEscolhido, yEscolhido, function (id) {
+				const passoGravado = { fn: 'c', k: state.selectedModel.chave, px: state.selectedDirectionX, py: state.selectedDirectionY, idx: state.selectedIndex }
+				criaObjetoChao(state.selectedModel, state.selectedDirectionX, state.selectedDirectionY, function (id) {
 					passoGravado.id = id
-					montagemGravada.push(passoGravado)
+					state.assemblySteps.push(passoGravado)
 					atualizarModeloAR()
 				})
 			}
-			for (let j = 0; j < botoes3d.length; j++) {
-				const botaoDireita = scene.getObjectById(botoes3d[j].direita);
-				const botaoEsquerda = scene.getObjectById(botoes3d[j].esquerda);
-				const botaoCima = scene.getObjectById(botoes3d[j].cima);
-				const botaoBaixo = scene.getObjectById(botoes3d[j].baixo);
+			for (let j = 0; j < state.groundButtons.length; j++) {
+				const botaoDireita = scene.getObjectById(state.groundButtons[j].direita);
+				const botaoEsquerda = scene.getObjectById(state.groundButtons[j].esquerda);
+				const botaoCima = scene.getObjectById(state.groundButtons[j].cima);
+				const botaoBaixo = scene.getObjectById(state.groundButtons[j].baixo);
 
 				botaoDireita.visible = false
 				botaoEsquerda.visible = false
@@ -1578,7 +1578,7 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 		btnAddBaixoPos.position.setX(cubinho.position.x)
 		btnAddBaixoPos.position.setY(cubinho.position.y)
 
-		botoes3d[i].baixo = btnAddBaixoPos.id;
+		state.groundButtons[i].baixo = btnAddBaixoPos.id;
 		scene.add(btnAddBaixoPos);
 	}
 
@@ -1586,16 +1586,16 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 
 function resetaCamera() {
 	gsap.to(camera.position, {
-		x: cameraInicialx,
-		y: cameraInicialy,
-		z: cameraInicialz != 0 ? cameraInicialz : 5,
+		x: state.cameraTargetX,
+		y: state.cameraTargetY,
+		z: state.cameraTargetZ != 0 ? state.cameraTargetZ : 5,
 		duration: 1,
 		onStart: () => { controls.enabled = false },
 		onComplete: () => { controls.enabled = true; }
 	})
 	gsap.to(controls.target, {
-		x: cameraInicialx,
-		y: cameraInicialy,
+		x: state.cameraTargetX,
+		y: state.cameraTargetY,
 		onStart: () => { controls.enabled = false },
 		onComplete: () => { controls.enabled = true }
 	})
@@ -1604,56 +1604,56 @@ function resetaCamera() {
 
 
 function verificaPosBotoes() {
-	for (let i = 0; i < ids.length; i++) {
-		const cubeEscolhido = scene.getObjectById(ids[i]);
-		let botaoDireita = scene.getObjectById(botoes3d[i].direita);
-		i == 0 || i == ids.length - 1 ? botaoDireita.visible = true : botaoDireita.visible = false
-		let botaoEsquerda = scene.getObjectById(botoes3d[i].esquerda);
-		i == 0 || i == ids.length - 1 ? botaoEsquerda.visible = true : botaoEsquerda.visible = false
-		let botaoCima = scene.getObjectById(botoes3d[i].cima);
+	for (let i = 0; i < state.groundIds.length; i++) {
+		const cubeEscolhido = scene.getObjectById(state.groundIds[i]);
+		let botaoDireita = scene.getObjectById(state.groundButtons[i].direita);
+		i == 0 || i == state.groundIds.length - 1 ? botaoDireita.visible = true : botaoDireita.visible = false
+		let botaoEsquerda = scene.getObjectById(state.groundButtons[i].esquerda);
+		i == 0 || i == state.groundIds.length - 1 ? botaoEsquerda.visible = true : botaoEsquerda.visible = false
+		let botaoCima = scene.getObjectById(state.groundButtons[i].cima);
 		botaoCima.visible = false;
 
-		let botaoDireitaCima = scene.getObjectById(botoes3dCima[i].direita);
-		i == 0 || i == ids.length - 1 ? botaoDireitaCima.visible = true : botaoDireitaCima.visible = false
-		let botaoEsquerdaCima = scene.getObjectById(botoes3dCima[i].esquerda);
-		i == 0 || i == ids.length - 1 ? botaoEsquerdaCima.visible = true : botaoEsquerdaCima.visible = false
-		let botaoCimaCima = scene.getObjectById(botoes3dCima[i].cima);
+		let botaoDireitaCima = scene.getObjectById(state.topButtons[i].direita);
+		i == 0 || i == state.groundIds.length - 1 ? botaoDireitaCima.visible = true : botaoDireitaCima.visible = false
+		let botaoEsquerdaCima = scene.getObjectById(state.topButtons[i].esquerda);
+		i == 0 || i == state.groundIds.length - 1 ? botaoEsquerdaCima.visible = true : botaoEsquerdaCima.visible = false
+		let botaoCimaCima = scene.getObjectById(state.topButtons[i].cima);
 		botaoCimaCima.visible = false
 
-		if (movelEscolhido.tipo == "chao") {
+		if (state.selectedPieceInfo.tipo == "chao") {
 
 			botaoDireitaCima.visible = false
 			botaoEsquerdaCima.visible = false
 
 		}
-		if (movelEscolhido.tipo == "cima") {
+		if (state.selectedPieceInfo.tipo == "cima") {
 			botaoDireita.visible = false
 			botaoEsquerda.visible = false
 
-			let cubeCima = scene.getObjectById(idsCima[i]);
+			let cubeCima = scene.getObjectById(state.topIds[i]);
 			// só deixa colocar o armário em cima se o balcão embaixo for do mesmo tamanho
-			if (cubeCima.name == "cubo" && cubeEscolhido.userData.modelo.tamanhox == movelEscolhido.tamanhox) botaoCima.visible = true
+			if (cubeCima.name == "cubo" && cubeEscolhido.userData.modelo.tamanhox == state.selectedPieceInfo.tamanhox) botaoCima.visible = true
 		}
 
-		let botaoBaixo = scene.getObjectById(botoes3d[i].baixo);
+		let botaoBaixo = scene.getObjectById(state.groundButtons[i].baixo);
 		if (botaoBaixo) botaoBaixo.visible = false;
-		if (movelEscolhido.tipo == "chao" && botaoBaixo) {
-			let cubeCimaReal = scene.getObjectById(idsCima[i]);
+		if (state.selectedPieceInfo.tipo == "chao" && botaoBaixo) {
+			let cubeCimaReal = scene.getObjectById(state.topIds[i]);
 			// só deixa colocar o balcão embaixo se já existir um armário ali e for do mesmo tamanho
-			if (cubeEscolhido.name == "cubo" && cubeCimaReal.name != "cubo" && cubeCimaReal.userData.modelo.tamanhox == movelEscolhido.tamanhox) {
+			if (cubeEscolhido.name == "cubo" && cubeCimaReal.name != "cubo" && cubeCimaReal.userData.modelo.tamanhox == state.selectedPieceInfo.tamanhox) {
 				botaoBaixo.visible = true
 			}
 		}
 
-		if (i + 1 < ids.length) {
-			const cubeDireita = scene.getObjectById(ids[i + 1]);
-			const cubeDireitaCima = scene.getObjectById(idsCima[i + 1]);
+		if (i + 1 < state.groundIds.length) {
+			const cubeDireita = scene.getObjectById(state.groundIds[i + 1]);
+			const cubeDireitaCima = scene.getObjectById(state.topIds[i + 1]);
 
 
-			if (movelEscolhido.tipo == "chao" && cubeDireita.name == "cubo" && cubeDireita.userData.modelo.tamanhox == movelEscolhido.tamanhox) {
+			if (state.selectedPieceInfo.tipo == "chao" && cubeDireita.name == "cubo" && cubeDireita.userData.modelo.tamanhox == state.selectedPieceInfo.tamanhox) {
 				botaoDireita.visible = true
 			}
-			else if (movelEscolhido.tipo == "cima" && cubeDireitaCima.name == "cubo" && cubeDireitaCima.userData.modelo.tamanhox == movelEscolhido.tamanhox) {
+			else if (state.selectedPieceInfo.tipo == "cima" && cubeDireitaCima.name == "cubo" && cubeDireitaCima.userData.modelo.tamanhox == state.selectedPieceInfo.tamanhox) {
 				botaoDireitaCima.visible = true
 			}
 			else {
@@ -1663,13 +1663,13 @@ function verificaPosBotoes() {
 			}
 		}
 		if (i - 1 >= 0) {
-			const cubeEsquerda = scene.getObjectById(ids[i - 1]);
-			const cubeEsquerdaCima = scene.getObjectById(idsCima[i - 1]);
+			const cubeEsquerda = scene.getObjectById(state.groundIds[i - 1]);
+			const cubeEsquerdaCima = scene.getObjectById(state.topIds[i - 1]);
 
-			if (movelEscolhido.tipo == "chao" && cubeEsquerda.name == "cubo" && cubeEsquerda.userData.modelo.tamanhox == movelEscolhido.tamanhox) {
+			if (state.selectedPieceInfo.tipo == "chao" && cubeEsquerda.name == "cubo" && cubeEsquerda.userData.modelo.tamanhox == state.selectedPieceInfo.tamanhox) {
 				botaoEsquerda.visible = true
 			}
-			else if (movelEscolhido.tipo == "cima" && cubeEsquerdaCima.name == "cubo" && cubeEsquerdaCima.userData.modelo.tamanhox == movelEscolhido.tamanhox) {
+			else if (state.selectedPieceInfo.tipo == "cima" && cubeEsquerdaCima.name == "cubo" && cubeEsquerdaCima.userData.modelo.tamanhox == state.selectedPieceInfo.tamanhox) {
 				botaoEsquerdaCima.visible = true
 			}
 			else {
@@ -1682,26 +1682,26 @@ function verificaPosBotoes() {
 }
 
 const handleCameraOnAdd = (valorXCube) => {
-	if (valorXMaior < valorXCube) {
-		valorXMaior = valorXCube
-		quantidadeItens += 1;
-		cameraInicialz = (quantidadeItens / 50) + camera.position.z
+	if (state.maxX < valorXCube) {
+		state.maxX = valorXCube
+		state.itemCount += 1;
+		state.cameraTargetZ = (state.itemCount / 50) + camera.position.z
 	}
-	if (valorXMenor > valorXCube) {
-		valorXMenor = valorXCube
-		quantidadeItens += 1;
-		cameraInicialz = (quantidadeItens / 50) + camera.position.z
+	if (state.minX > valorXCube) {
+		state.minX = valorXCube
+		state.itemCount += 1;
+		state.cameraTargetZ = (state.itemCount / 50) + camera.position.z
 	}
 
-	cameraInicialx = (valorXMenor + (valorXMaior - valorXMenor) / 2);
+	state.cameraTargetX = (state.minX + (state.maxX - state.minX) / 2);
 	gsap.to(controls.target, {
-		x: cameraInicialx,
+		x: state.cameraTargetX,
 		onStart: () => { controls.enabled = false },
 		onComplete: () => { controls.enabled = true }
 	})
 	gsap.to(camera.position, {
-		z: cameraInicialz,
-		x: cameraInicialx,
+		z: state.cameraTargetZ,
+		x: state.cameraTargetX,
 		onStart: () => { controls.enabled = false },
 		onComplete: () => { controls.enabled = true }
 	})
@@ -1733,13 +1733,10 @@ document.body.appendChild(modelViewerAR);
 // poder chamar activateAR() de forma síncrona — Scene Viewer/Quick Look só abrem se
 // ativados dentro do próprio gesto de clique; exportar/carregar o GLB depois do clique
 // perde esse gesto e o navegador bloqueia a RA sem avisar nada.
-let ultimoBlobURLAR = null;
-let modeloARPronto = false;
-
 async function atualizarModeloAR() {
-	if (!dispositivoMovel || (ids.length === 0 && idsCima.length === 0)) return;
+	if (!dispositivoMovel || (state.groundIds.length === 0 && state.topIds.length === 0)) return;
 
-	modeloARPronto = false;
+	state.isArModelReady = false;
 	const exporter = new GLTFExporter();
 	const glb = await exporter.parseAsync(scene, { binary: true });
 	const url = URL.createObjectURL(new Blob([glb], { type: 'model/gltf-binary' }));
@@ -1749,9 +1746,9 @@ async function atualizarModeloAR() {
 		modelViewerAR.src = url;
 	});
 
-	if (ultimoBlobURLAR) URL.revokeObjectURL(ultimoBlobURLAR);
-	ultimoBlobURLAR = url;
-	modeloARPronto = true;
+	if (state.lastArBlobUrl) URL.revokeObjectURL(state.lastArBlobUrl);
+	state.lastArBlobUrl = url;
+	state.isArModelReady = true;
 }
 
 btnRa.title = 'Ver em Realidade Aumentada';
@@ -1762,7 +1759,7 @@ btnRa.addEventListener('pointerdown', function () {
 		return;
 	}
 
-	if (!modeloARPronto) {
+	if (!state.isArModelReady) {
 		console.warn('Modelo de RA ainda não estava pronto a tempo do clique.');
 		return;
 	}
