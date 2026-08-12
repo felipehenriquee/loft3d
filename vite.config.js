@@ -15,6 +15,14 @@ export default defineConfig({
 		__APP_VERSION__: JSON.stringify(gitHashCurto()),
 		__BUILD_TIME__: JSON.stringify(new Date().toISOString())
 	},
+	server: {
+		port: 5174,
+		strictPort: true
+	},
+	preview: {
+		port: 5174,
+		strictPort: true
+	},
 	build: {
 		outDir: 'dist'
 	}
