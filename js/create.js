@@ -1170,51 +1170,86 @@ window.addEventListener('resize', function () {
 	camera.updateProjectionMatrix;
 })
 
-window.addEventListener('click', function () {
-	if (modoVisualizacao) return;
+// Projeta a posição do clique/toque na cena e devolve os objetos atingidos pelo raio.
+// Esse bloco de 4 linhas se repetia igual em 6 lugares diferentes do arquivo.
+function raycastFromEvent(event) {
 	pointer.x = (event.clientX / tamanhoScene) * 2 - 1;
 	pointer.y = - (event.clientY / window.innerHeight) * 2 + 1;
 	raycaster.setFromCamera(pointer, camera);
-	var intersects = raycaster.intersectObjects(scene.children);
+	return raycaster.intersectObjects(scene.children);
+}
+
+// Resolve, a partir de um clique, qual peça (real ou "cubo" vazio) foi atingida, preenchendo
+// state.selectedObjectId/state.selectedIndex. Usado tanto pra selecionar uma peça pra excluir
+// quanto pelos botões de adicionar (direita/esquerda/cima/baixo) — esse era o bloco de
+// raycasting+resolução que se repetia quase idêntico em 5 lugares diferentes.
+//
+// opts.tipo: "chao"/"cima" do botão clicado, usado quando opts.usarTipoDoObjetoClicado é falso
+// opts.usarTipoDoObjetoClicado: usa o tipo do objeto atingido pelo raio em vez de opts.tipo
+//   (assim funcionam os botões de cima/baixo e a seleção por clique direto na peça)
+// opts.idBotaoFallback + opts.ladoBotaoFallback: se o raio não acertar nada (ex: o próprio
+//   botão 3D bloqueando o raio), procura em qual posição está registrado esse botão — só os
+//   botões de direita/esquerda precisam desse fallback
+//
+// Devolve o objeto atingido (ou null se nada foi atingido e não havia fallback aplicável).
+function resolveSelecaoDoClique(event, opts) {
+	opts = opts || {};
+	const intersects = raycastFromEvent(event);
 
 	if (intersects.length > 0) {
 		menuDiv.classList.add("label");
-		const position = intersects[0].object.position;
 		state.selectedObjectId = intersects[0].object.name == "cubo" ? intersects[0].object.id : intersects[0].object.parent.id;
 
 		let cubeEscolhido = scene.getObjectById(state.selectedObjectId);
-
 		if (!cubeEscolhido.userData.tamanho) {
-
 			state.selectedObjectId = intersects[0].object.parent.parent.id;
 			cubeEscolhido = scene.getObjectById(state.selectedObjectId);
 		}
 
-		removeButton.classList.add('hide')
-		state.selectedIndex = cubeEscolhido.userData.modelo.tipo == "chao" ? state.groundIds.indexOf(state.selectedObjectId) : state.topIds.indexOf(state.selectedObjectId)
+		const tipoParaIndice = opts.usarTipoDoObjetoClicado ? cubeEscolhido.userData.modelo.tipo : opts.tipo;
+		state.selectedIndex = tipoParaIndice == "chao" ? state.groundIds.indexOf(state.selectedObjectId) : state.topIds.indexOf(state.selectedObjectId);
+		return cubeEscolhido;
+	}
 
-		let listaContraria = cubeEscolhido.userData.modelo.tipo == "chao" ? state.topIds : state.groundIds
-		if (cubeEscolhido.name == "cubo") {
-			removeButton.classList.add('hide')
-			if (scene.getObjectById(listaContraria[state.selectedIndex]).name == "cubo") {
-				removeButton.classList.remove('hide')
-				btnRemove.position.setY(cubeEscolhido.userData.modelo.tipo == "chao" ? cubeEscolhido.position.y - 0.5 : cubeEscolhido.position.y + 0.5)
-				btnRemove.position.setX(cubeEscolhido.position.x)
+	if (opts.idBotaoFallback) {
+		for (let k = 0; k < state.groundButtons.length; k++) {
+			if (state.topButtons[k][opts.ladoBotaoFallback] == opts.idBotaoFallback) {
+				state.selectedIndex = k;
+				state.selectedObjectId = opts.tipo == "chao" ? state.groundIds[state.selectedIndex] : state.topIds[state.selectedIndex];
+			}
+			if (state.groundButtons[k][opts.ladoBotaoFallback] == opts.idBotaoFallback) {
+				state.selectedIndex = k;
+				state.selectedObjectId = opts.tipo == "chao" ? state.groundIds[state.selectedIndex] : state.topIds[state.selectedIndex];
 			}
 		}
-		else {
+	}
+	return null;
+}
+
+window.addEventListener('click', function () {
+	if (modoVisualizacao) return;
+	const cubeEscolhido = resolveSelecaoDoClique(event, { usarTipoDoObjetoClicado: true });
+	if (!cubeEscolhido) return;
+
+	removeButton.classList.add('hide')
+	let listaContraria = cubeEscolhido.userData.modelo.tipo == "chao" ? state.topIds : state.groundIds
+	if (cubeEscolhido.name == "cubo") {
+		removeButton.classList.add('hide')
+		if (scene.getObjectById(listaContraria[state.selectedIndex]).name == "cubo") {
 			removeButton.classList.remove('hide')
-			btnRemove.position.setY(cubeEscolhido.userData.modelo.tipo == "chao" ? cubeEscolhido.position.y : cubeEscolhido.position.y + 2.1)
+			btnRemove.position.setY(cubeEscolhido.userData.modelo.tipo == "chao" ? cubeEscolhido.position.y - 0.5 : cubeEscolhido.position.y + 0.5)
 			btnRemove.position.setX(cubeEscolhido.position.x)
 		}
+	}
+	else {
+		removeButton.classList.remove('hide')
+		btnRemove.position.setY(cubeEscolhido.userData.modelo.tipo == "chao" ? cubeEscolhido.position.y : cubeEscolhido.position.y + 2.1)
+		btnRemove.position.setX(cubeEscolhido.position.x)
 	}
 })
 
 function onPointerMove(event) {
-	pointer.x = (event.clientX / tamanhoScene) * 2 - 1;
-	pointer.y = - (event.clientY / window.innerHeight) * 2 + 1;
-	raycaster.setFromCamera(pointer, camera);
-	var intersects = raycaster.intersectObjects(scene.children);
+	var intersects = raycastFromEvent(event);
 
 	if (intersects.length > 0) {
 		document.body.style.cursor = 'pointer'
@@ -1266,45 +1301,7 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 			state.isAddingModule = true;
 			state.selectedSide = "direita"
 
-			pointer.x = (event.clientX / tamanhoScene) * 2 - 1;
-			pointer.y = - (event.clientY / window.innerHeight) * 2 + 1;
-			raycaster.setFromCamera(pointer, camera);
-			var intersects = raycaster.intersectObjects(scene.children);
-
-			if (intersects.length > 0) {
-				menuDiv.classList.add("label");
-				const position = intersects[0].object.position;
-				state.selectedObjectId = intersects[0].object.name == "cubo" ? intersects[0].object.id : intersects[0].object.parent.id;
-
-				let cubeEscolhido = scene.getObjectById(state.selectedObjectId);
-
-
-				if (!cubeEscolhido.userData.tamanho) {
-
-					state.selectedObjectId = intersects[0].object.parent.parent.id;
-					cubeEscolhido = scene.getObjectById(state.selectedObjectId);
-				}
-
-				state.selectedIndex = tipo == "chao" ? state.groundIds.indexOf(state.selectedObjectId) : state.topIds.indexOf(state.selectedObjectId);
-			}
-			else {
-
-				for (let k = 0; k < state.groundButtons.length; k++) {
-
-					if (state.topButtons[k].direita == window['btnDireita'].id) {
-						state.selectedIndex = k
-
-						state.selectedObjectId = tipo == "chao" ? state.groundIds[state.selectedIndex] : state.topIds[state.selectedIndex]
-					}
-					if (state.groundButtons[k].direita == window['btnDireita'].id) {
-						state.selectedIndex = k
-
-						state.selectedObjectId = tipo == "chao" ? state.groundIds[state.selectedIndex] : state.topIds[state.selectedIndex]
-					}
-
-				}
-
-			}
+			resolveSelecaoDoClique(event, { tipo, idBotaoFallback: window['btnDireita'].id, ladoBotaoFallback: 'direita' });
 			{
 				const passoGravado = { fn: tipo == "chao" ? 'c' : 't', k: state.selectedModel.chave, px: state.selectedDirectionX, py: state.selectedDirectionY, idx: state.selectedIndex }
 				const aoConcluir = function (id) { passoGravado.id = id; state.assemblySteps.push(passoGravado); atualizarModeloAR() }
@@ -1357,46 +1354,7 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 			state.isAddingModule = true;
 			state.selectedSide = "esquerda"
 
-			pointer.x = (event.clientX / tamanhoScene) * 2 - 1;
-			pointer.y = - (event.clientY / window.innerHeight) * 2 + 1;
-			raycaster.setFromCamera(pointer, camera);
-			var intersects = raycaster.intersectObjects(scene.children);
-
-			if (intersects.length > 0) {
-				menuDiv.classList.add("label");
-				const position = intersects[0].object.position;
-				state.selectedObjectId = intersects[0].object.name == "cubo" ? intersects[0].object.id : intersects[0].object.parent.id;
-
-				let cubeEscolhido = scene.getObjectById(state.selectedObjectId);
-
-
-				if (!cubeEscolhido.userData.tamanho) {
-
-					state.selectedObjectId = intersects[0].object.parent.parent.id;
-					cubeEscolhido = scene.getObjectById(state.selectedObjectId);
-				}
-
-				state.selectedIndex = tipo == "chao" ? state.groundIds.indexOf(state.selectedObjectId) : state.topIds.indexOf(state.selectedObjectId);
-
-			}
-			else {
-
-				for (let k = 0; k < state.groundButtons.length; k++) {
-
-					if (state.topButtons[k].esquerda == btnAddEsquerda.id) {
-						state.selectedIndex = k
-
-						state.selectedObjectId = tipo == "chao" ? state.groundIds[state.selectedIndex] : state.topIds[state.selectedIndex]
-					}
-					if (state.groundButtons[k].esquerda == btnAddEsquerda.id) {
-						state.selectedIndex = k
-
-						state.selectedObjectId = tipo == "chao" ? state.groundIds[state.selectedIndex] : state.topIds[state.selectedIndex]
-					}
-
-				}
-
-			}
+			resolveSelecaoDoClique(event, { tipo, idBotaoFallback: btnAddEsquerda.id, ladoBotaoFallback: 'esquerda' });
 			{
 				const passoGravado = { fn: tipo == "chao" ? 'c' : 't', k: state.selectedModel.chave, px: state.selectedDirectionX, py: state.selectedDirectionY, idx: state.selectedIndex }
 				const aoConcluir = function (id) { passoGravado.id = id; state.assemblySteps.push(passoGravado); atualizarModeloAR() }
@@ -1447,28 +1405,7 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 			state.isAddingModule = true;
 			state.selectedSide = "cima";
 
-			pointer.x = (event.clientX / tamanhoScene) * 2 - 1;
-			pointer.y = - (event.clientY / window.innerHeight) * 2 + 1;
-			raycaster.setFromCamera(pointer, camera);
-			var intersects = raycaster.intersectObjects(scene.children);
-
-			if (intersects.length > 0) {
-				menuDiv.classList.add("label");
-				const position = intersects[0].object.position;
-				state.selectedObjectId = intersects[0].object.name == "cubo" ? intersects[0].object.id : intersects[0].object.parent.id;
-
-				let cubeEscolhido = scene.getObjectById(state.selectedObjectId);
-
-
-				if (!cubeEscolhido.userData.tamanho) {
-
-					state.selectedObjectId = intersects[0].object.parent.parent.id;
-					cubeEscolhido = scene.getObjectById(state.selectedObjectId);
-				}
-
-				state.selectedIndex = cubeEscolhido.userData.modelo.tipo == "chao" ? state.groundIds.indexOf(state.selectedObjectId) : state.topIds.indexOf(state.selectedObjectId);
-
-			}
+			resolveSelecaoDoClique(event, { usarTipoDoObjetoClicado: true });
 
 			{
 				const passoGravado = { fn: 't', k: state.selectedModel.chave, px: state.selectedDirectionX, py: state.selectedDirectionY, idx: state.selectedIndex }
@@ -1524,28 +1461,7 @@ function createButtonAdd(x = 0, y = 0, cubinho, i, tipo) {
 			state.isAddingModule = true;
 			state.selectedSide = "baixo";
 
-			pointer.x = (event.clientX / tamanhoScene) * 2 - 1;
-			pointer.y = - (event.clientY / window.innerHeight) * 2 + 1;
-			raycaster.setFromCamera(pointer, camera);
-			var intersects = raycaster.intersectObjects(scene.children);
-
-			if (intersects.length > 0) {
-				menuDiv.classList.add("label");
-				const position = intersects[0].object.position;
-				state.selectedObjectId = intersects[0].object.name == "cubo" ? intersects[0].object.id : intersects[0].object.parent.id;
-
-				let cubeEscolhido = scene.getObjectById(state.selectedObjectId);
-
-
-				if (!cubeEscolhido.userData.tamanho) {
-
-					state.selectedObjectId = intersects[0].object.parent.parent.id;
-					cubeEscolhido = scene.getObjectById(state.selectedObjectId);
-				}
-
-				state.selectedIndex = cubeEscolhido.userData.modelo.tipo == "chao" ? state.groundIds.indexOf(state.selectedObjectId) : state.topIds.indexOf(state.selectedObjectId);
-
-			}
+			resolveSelecaoDoClique(event, { usarTipoDoObjetoClicado: true });
 
 			{
 				const passoGravado = { fn: 'c', k: state.selectedModel.chave, px: state.selectedDirectionX, py: state.selectedDirectionY, idx: state.selectedIndex }
