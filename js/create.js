@@ -50,7 +50,6 @@ const modoVisualizacao = !!receitaURL;
 
 const tamanhoMenuLateral = modoVisualizacao ? 0 : 400;
 let tamanhoScene = window.innerWidth - tamanhoMenuLateral;
-// import { Projector } from './three/examples/jsm/loaders/DRACOLoader.js';
 
 // Configurando a cena
 const scene = new THREE.Scene();
@@ -115,7 +114,6 @@ const cube = new THREE.Mesh(geometry, material)
 // criação menu
 const menuDiv = document.createElement('div');
 menuDiv.className = 'label';
-// menuDiv.className = 'hide';
 
 // criação do cabecalho do menu
 const cabecalhoDiv = document.createElement('div');
@@ -199,7 +197,6 @@ for (let i = 0; i < objetos.todosObjetos.length; i++) {
 				atualizarModeloAR()
 			})
 		}
-		// menuDiv.classList.add("hide");
 		else {
 			state.selectedModel = objetos.todosObjetos[i]
 			verificaPosBotoes()
@@ -733,7 +730,6 @@ function criaObjetoCima(modelo, px, py, index, onDone) {
 				}
 				cubeEscolhido.direita = { preenchido: true, id: gltf.scene.id };
 				if (!state.groundIds[state.selectedIndex + 1]) {
-					// state.groundIds[state.selectedIndex+1] = 0;
 					criaCubo(true)
 
 				}
@@ -783,7 +779,6 @@ function criaObjetoCima(modelo, px, py, index, onDone) {
 					fimy: gltf.scene.box3.max.y
 				}
 				if (!state.groundIds[state.selectedIndex - 1]) {
-					// state.groundIds[state.selectedIndex+1] = 0;
 					criaCubo(true)
 
 				}
