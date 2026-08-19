@@ -5,6 +5,13 @@ import { scene, camera, controls, raycaster, pointer, tamanhoScene, loader, modo
 import { menuDiv, removeButton, btnRemove, addButton, largura, altura, profundidade } from './ui.js';
 import { atualizarModeloAR } from './ar.js';
 
+// Chamado quando o GLTFLoader falha ao carregar um modelo (ex: URL fora do ar, rede caiu):
+// sem isso o carregamento falhava em silêncio, sem log nem qualquer aviso pro usuário
+function avisaErroCarregamento(modelo, error) {
+	console.error('Falha ao carregar o modelo "' + modelo.nome + '" (' + modelo.local + '):', error);
+	alert('Não foi possível carregar "' + modelo.nome + '". Verifique sua conexão e tente novamente.');
+}
+
 // Entrada vazia de botões (direita/esquerda/cima/baixo) rastreados por coluna em
 // state.groundButtons/state.topButtons, antes de qualquer botão ser criado ali
 function criaBotoesVazio() {
@@ -101,7 +108,7 @@ function criaObjeto(modelo, onDone) {
 		// called while loading is progressing
 		function (xhr) {},
 		// called when loading has errors
-		function (error) {}
+		function (error) { avisaErroCarregamento(modelo, error); }
 	);
 
 }
@@ -250,7 +257,7 @@ function criaObjetoChao(modelo, direcaoX, direcaoY, onDone) {
 		// called while loading is progressing
 		function (xhr) {},
 		// called when loading has errors
-		function (error) {}
+		function (error) { avisaErroCarregamento(modelo, error); }
 	);
 
 }
@@ -391,7 +398,7 @@ function criaObjetoCima(modelo, direcaoX, direcaoY, onDone) {
 		// called while loading is progressing
 		function (xhr) {},
 		// called when loading has errors
-		function (error) {}
+		function (error) { avisaErroCarregamento(modelo, error); }
 	);
 
 }
