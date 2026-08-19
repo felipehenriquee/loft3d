@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { CSS3DRenderer } from 'three/examples/jsm/renderers/CSS3DRenderer.js';
 
@@ -60,11 +59,6 @@ scene.updateMatrixWorld(true);
 export const loader = new GLTFLoader();
 export const raycaster = new THREE.Raycaster();
 export const pointer = new THREE.Vector2();
-
-// Optional: Provide a DRACOLoader instance to decode compressed mesh data
-const dracoLoader = new DRACOLoader();
-dracoLoader.setDecoderPath('./three/examples/js/libs/draco/');
-loader.setDRACOLoader(dracoLoader);
 
 window.addEventListener('resize', function () {
 	var width = tamanhoScene;

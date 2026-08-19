@@ -4,4 +4,6 @@ dist
 .env.local
 simpleXr-construtor.zip
 model/glb
+test-results
+playwright-report
 

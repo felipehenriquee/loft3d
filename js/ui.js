@@ -148,7 +148,6 @@ btnRa.addEventListener('pointerdown', function () {
 export const removeButton = document.createElement('button');
 removeButton.className = 'btnRemove backgroundImage hide';
 removeButton.addEventListener('pointerdown', function (event) {
-	state.selectedIndex = state.selectedIndex
 	remove()
 	removeButton.classList.add('hide')
 });

@@ -277,7 +277,6 @@ function criaObjetoCima(modelo, direcaoX, direcaoY, onDone) {
 
 			handleCameraOnAdd(cubeEscolhido.position.x);
 			const tamanhox = cube1BB.max.x - cube1BB.min.x;
-			const tamanhoy = cube1BB.max.y - cube1BB.min.y;
 			gltf.scene.userData = {
 				modelo,
 				centro: false,
@@ -765,7 +764,6 @@ function onPointerMove(event) {
 
 	if (intersects.length > 0) {
 		document.body.style.cursor = 'pointer'
-		const position = intersects[0].object.position;
 		state.hoveredObjectId = intersects[0].object.parent.id;
 		let cubeEscolhido = scene.getObjectById(state.hoveredObjectId);
 
