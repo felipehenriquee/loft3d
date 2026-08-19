@@ -95,7 +95,7 @@ for (let i = 0; i < objetos.todosObjetos.length; i++) {
 		button.classList.add("btnAtivo")
 		if (state.groundIds.length == 0 || state.topIds.length == 0) {
 			const chaveModelo = objetos.todosObjetos[i].chave
-			criaObjeto(objetos.todosObjetos[i], undefined, undefined, function (id) {
+			criaObjeto(objetos.todosObjetos[i], function (id) {
 				state.assemblySteps.push({ fn: 'i', k: chaveModelo, id: id })
 				atualizarModeloAR()
 			})

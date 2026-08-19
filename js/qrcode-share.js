@@ -71,7 +71,7 @@ export function remontarDaURL(receita) {
 
 			return new Promise(function (resolve) {
 				if (passo.fn === 'i') {
-					criaObjeto(modelo, undefined, undefined, resolve);
+					criaObjeto(modelo, resolve);
 					return;
 				}
 				state.selectedModel = modelo;
@@ -80,7 +80,7 @@ export function remontarDaURL(receita) {
 				if (passo.fn === 'c') {
 					criaObjetoChao(modelo, passo.px, passo.py, resolve);
 				} else {
-					criaObjetoCima(modelo, passo.px, passo.py, passo.idx, resolve);
+					criaObjetoCima(modelo, passo.px, passo.py, resolve);
 				}
 			});
 		});
