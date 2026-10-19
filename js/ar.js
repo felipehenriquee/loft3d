@@ -1,3 +1,4 @@
+import { Vector2 } from 'three';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { state } from './state.js';
 import { scene } from './scene.js';
@@ -12,9 +13,39 @@ export const dispositivoMovel = /Android|iPhone|iPad|iPod/i.test(navigator.userA
 export let modelViewerAR = null;
 let carregamentoModelViewer = null;
 
+// No WebXR o model-viewer só começa a arrastar (mover) o modelo se o toque cair no retângulo de
+// posicionamento no chão; tocando no corpo do móvel, que é alto, o raio passa por trás desse
+// retângulo e o gesto vira rotação — na prática não dava pra mover a montagem. Aqui, se o toque
+// errar o retângulo mas acertar o modelo, usamos o ponto do chão sob o dedo pra começar o arrasto.
+// PlacementBox é interno do model-viewer (lib/), então isso pode precisar de ajuste ao atualizar a lib.
+function permiteArrastarTocandoNoModelo(PlacementBox) {
+	const getHitOriginal = PlacementBox.prototype.getHit;
+	const pontoTela = new Vector2();
+
+	PlacementBox.prototype.getHit = function (cenaModelo, telaX, telaY) {
+		const acerto = getHitOriginal.call(this, cenaModelo, telaX, telaY);
+		if (acerto != null || cenaModelo.model == null) return acerto;
+
+		if (cenaModelo.hitFromPoint(pontoTela.set(telaX, -telaY), cenaModelo.model) == null) return null;
+
+		// mesmo truque do getExpandedHit do model-viewer: plano do chão "infinito" só para este teste
+		this.hitPlane.scale.set(1000, 1000, 1000);
+		this.hitPlane.updateMatrixWorld();
+		const acertoNoChao = getHitOriginal.call(this, cenaModelo, telaX, telaY);
+		this.hitPlane.scale.set(1, 1, 1);
+		this.hitPlane.updateMatrixWorld();
+		return acertoNoChao;
+	};
+}
+
 function garanteModelViewerCarregado() {
 	if (!carregamentoModelViewer) {
-		carregamentoModelViewer = import('@google/model-viewer').then(function () {
+		carregamentoModelViewer = Promise.all([
+			import('@google/model-viewer'),
+			import('@google/model-viewer/lib/three-components/PlacementBox.js')
+		]).then(function ([, { PlacementBox }]) {
+			permiteArrastarTocandoNoModelo(PlacementBox);
+
 			modelViewerAR = document.createElement('model-viewer');
 			modelViewerAR.setAttribute('ar', '');
 			modelViewerAR.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
