@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CSS3DObject } from 'three/examples/jsm/renderers/CSS3DRenderer.js';
 import { state } from './state.js';
-import { scene, camera, controls, raycaster, pointer, tamanhoScene, loader, modoVisualizacao } from './scene.js';
+import { scene, camera, controls, raycaster, pointer, tamanhoScene, loader, modoVisualizacao, removeDaCena } from './scene.js';
 import { menuDiv, removeButton, btnRemove, addButton, largura, altura, profundidade } from './ui.js';
 import { atualizarModeloAR } from './ar.js';
 
@@ -155,7 +155,7 @@ function criaObjetoChao(modelo, direcaoX, direcaoY, onDone) {
 
 				let cubeDireita = state.groundIds[state.selectedIndex + 1] ? scene.getObjectById(state.groundIds[state.selectedIndex + 1]) : null
 				if (cubeDireita && cubeDireita.name == "placeholder") {
-					scene.remove(cubeDireita)
+					removeDaCena(cubeDireita)
 				}
 				state.groundIds[state.selectedIndex + 1] ? state.groundIds[state.selectedIndex + 1] = gltf.scene.id : state.groundIds.push(gltf.scene.id)
 
@@ -195,7 +195,7 @@ function criaObjetoChao(modelo, direcaoX, direcaoY, onDone) {
 
 				let cubeEsquerda = state.groundIds[state.selectedIndex - 1] ? scene.getObjectById(state.groundIds[state.selectedIndex - 1]) : null
 				if (cubeEsquerda && cubeEsquerda.name == "placeholder") {
-					scene.remove(cubeEsquerda)
+					removeDaCena(cubeEsquerda)
 				}
 				state.groundIds[state.selectedIndex - 1] ? state.groundIds[state.selectedIndex - 1] = gltf.scene.id : state.groundIds.unshift(gltf.scene.id)
 				gltf.scene.userData.centroEsquerda = true;
@@ -233,12 +233,12 @@ function criaObjetoChao(modelo, direcaoX, direcaoY, onDone) {
 
 				let cubeRemover = scene.getObjectById(state.groundIds[state.selectedIndex]);
 
-				scene.remove(cubeRemover)
+				removeDaCena(cubeRemover)
 				state.groundIds[state.selectedIndex] = gltf.scene.id
 
 				let cubeEsquerda = state.groundIds[state.selectedIndex - 1] ? scene.getObjectById(state.groundIds[state.selectedIndex - 1]) : null
 				if (cubeEsquerda && cubeEsquerda.name == "placeholder") {
-					scene.remove(cubeEsquerda)
+					removeDaCena(cubeEsquerda)
 				}
 
 				gltf.scene.position.setX(cubeEscolhido.position.x);
@@ -311,7 +311,7 @@ function criaObjetoCima(modelo, direcaoX, direcaoY, onDone) {
 				gltf.scene.userData.centroDireita = true
 				cubeDireita ? state.topIds[state.selectedIndex + 1] = gltf.scene.id : state.topIds.push(gltf.scene.id)
 				if (cubeDireita && cubeDireita.name == "placeholder") {
-					scene.remove(cubeDireita)
+					removeDaCena(cubeDireita)
 
 				}
 				gltf.scene.position.setX(cubeEscolhido.position.x + (cubeEscolhido.box3.max.x) + gltf.scene.box3.max.x);
@@ -345,7 +345,7 @@ function criaObjetoCima(modelo, direcaoX, direcaoY, onDone) {
 				let cubeEsquerda = state.topIds[state.selectedIndex - 1] ? scene.getObjectById(state.topIds[state.selectedIndex - 1]) : null;
 				cubeEsquerda ? state.topIds[state.selectedIndex - 1] = gltf.scene.id : state.topIds.unshift(gltf.scene.id)
 				if (cubeEsquerda && cubeEsquerda.name == "placeholder") {
-					scene.remove(cubeEsquerda)
+					removeDaCena(cubeEsquerda)
 
 				}
 				gltf.scene.position.setX(cubeEscolhido.position.x + (cubeEscolhido.box3.min.x) + gltf.scene.box3.min.x);
@@ -372,7 +372,7 @@ function criaObjetoCima(modelo, direcaoX, direcaoY, onDone) {
 
 				let cubeRemover = scene.getObjectById(state.topIds[state.selectedIndex]);
 
-				scene.remove(cubeRemover)
+				removeDaCena(cubeRemover)
 				state.topIds[state.selectedIndex] = gltf.scene.id
 				gltf.scene.position.setX(cubeEscolhido.position.x);
 
@@ -436,6 +436,7 @@ function remove() {
 		direita: state.groundButtons[state.selectedIndex].direita,
 		esquerda: state.groundButtons[state.selectedIndex].esquerda,
 		cima: state.groundButtons[state.selectedIndex].cima,
+		baixo: state.groundButtons[state.selectedIndex].baixo,
 
 	}
 	let botoesApagarCima = {
@@ -454,20 +455,21 @@ function remove() {
 		realocaModelo();
 
 
-		scene.remove(outroObj);
-		scene.remove(obj);
-		scene.remove(botoesApagar.direita)
-		scene.remove(botoesApagar.esquerda)
-		scene.remove(botoesApagar.cima)
-		scene.remove(botoesApagarCima.direita)
-		scene.remove(botoesApagarCima.esquerda)
-		scene.remove(botoesApagarCima.cima)
+		removeDaCena(outroObj);
+		removeDaCena(obj);
+		removeDaCena(botoesApagar.direita)
+		removeDaCena(botoesApagar.esquerda)
+		removeDaCena(botoesApagar.cima)
+		removeDaCena(botoesApagar.baixo)
+		removeDaCena(botoesApagarCima.direita)
+		removeDaCena(botoesApagarCima.esquerda)
+		removeDaCena(botoesApagarCima.cima)
 
 	} else {
 		if (state.groundIds[state.selectedIndex] == state.topIds[state.selectedIndex]) criaPlaceholderCima()
 		obj.userData.modelo.tipo == "chao" ? criaPlaceholder() : criaPlaceholderCima()
 
-		scene.remove(obj);
+		removeDaCena(obj);
 	}
 	state.previousHoverIndex = null
 	if (state.groundIds.length == 0 && state.topIds.length == 0) addButton.classList.remove('hide')

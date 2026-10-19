@@ -60,19 +60,68 @@ export const loader = new GLTFLoader();
 export const raycaster = new THREE.Raycaster();
 export const pointer = new THREE.Vector2();
 
+// Renderização sob demanda: desenhar WebGL + as duas camadas de botões HTML a 60fps com a cena
+// parada deixava o PC travando depois de um tempo com a página aberta. Agora só desenha enquanto
+// a câmera se move (controls.update() devolve true, inclusive no damping e nas animações do gsap)
+// ou durante uma janela de tempo depois de alguma interação/carregamento.
+let renderizarAte = 0;
+
+export function pedirRender(duracaoMs = 1000) {
+	renderizarAte = Math.max(renderizarAte, performance.now() + duracaoMs);
+}
+
+['pointerdown', 'pointermove', 'pointerup', 'click', 'wheel', 'keydown'].forEach(function (tipoEvento) {
+	window.addEventListener(tipoEvento, function () { pedirRender(); }, { passive: true });
+});
+
+// Todo carregamento de modelo passa por aqui: depois que a peça entra na cena ainda vem a
+// animação de câmera (gsap), então garante render por um tempo após o callback
+const carregaOriginal = loader.load.bind(loader);
+loader.load = function (url, aoCarregar, aoProgredir, aoFalhar) {
+	return carregaOriginal(url, function (gltf) {
+		aoCarregar(gltf);
+		pedirRender(1500);
+	}, aoProgredir, aoFalhar);
+};
+
+// Tira o objeto da cena e libera geometria/material/texturas da GPU — só scene.remove deixava
+// tudo alocado, e a memória crescia a cada peça trocada/apagada. Aceita o objeto ou o id dele.
+export function removeDaCena(objetoOuId) {
+	const objeto = typeof objetoOuId === 'number' ? scene.getObjectById(objetoOuId) : objetoOuId;
+	if (!objeto) return;
+
+	scene.remove(objeto);
+	objeto.traverse(function (filho) {
+		if (filho.geometry) filho.geometry.dispose();
+		if (!filho.material) return;
+		const materiais = Array.isArray(filho.material) ? filho.material : [filho.material];
+		materiais.forEach(function (material) {
+			Object.values(material).forEach(function (valor) {
+				if (valor && valor.isTexture) valor.dispose();
+			});
+			material.dispose();
+		});
+	});
+	pedirRender();
+}
+
 window.addEventListener('resize', function () {
 	var width = tamanhoScene;
 	var height = window.innerHeight;
 	renderer.setSize(width, height)
 	camera.aspect = width / height;
-	camera.updateProjectionMatrix;
+	camera.updateProjectionMatrix();
+	pedirRender();
 })
 
 function animate() {
-	controls.update();
+	const cameraMudou = controls.update();
+	if (!cameraMudou && performance.now() > renderizarAte) return;
+
 	labelRenderer.render(scene, camera);
 	botoesRenderer.render(scene, camera);
 	renderer.render(scene, camera);
 }
 
+pedirRender();
 renderer.setAnimationLoop(animate);
